@@ -116,6 +116,10 @@ Abre **Preferencias** (`⌘,` desde el menú de Klip):
 
 ¡Las contribuciones son bienvenidas! Abre un *issue* o un *pull request*. El proyecto compila solo con las Command Line Tools (sin Xcode), así que es fácil de arrancar.
 
+## 👤 Autor
+
+Creado y dirigido por **Martin Velasco O.** — [@tamibot](https://github.com/tamibot) · Proper.
+
 ## 📄 Licencia
 
-[MIT](LICENSE) — úsalo, modifícalo y compártelo libremente.
+[MIT](LICENSE) © 2026 Martin Velasco O. — úsalo, modifícalo y compártelo libremente.

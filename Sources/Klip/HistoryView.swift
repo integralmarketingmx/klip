@@ -503,7 +503,7 @@ extension NSColor {
     convenience init?(klipHex raw: String) {
         var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if s.hasPrefix("#") { s.removeFirst() }
-        guard [3, 6, 8].contains(s.count), s.allSatisfy({ $0.isHexDigit }) else { return nil }
+        guard [3, 6, 8].contains(s.count), s.allSatisfy({ $0.isASCII && $0.isHexDigit }) else { return nil }
         func byte(_ sub: Substring) -> CGFloat { CGFloat(Int(sub, radix: 16) ?? 0) / 255.0 }
         let chars = Array(s)
         let r, g, b: CGFloat

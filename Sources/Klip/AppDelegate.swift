@@ -178,6 +178,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    @objc private func clearAll() { manager.clearAll() }
+    @objc private func clearAll() {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = L10n.t("clear.title")
+        alert.informativeText = L10n.t("clear.info")
+        let del = alert.addButton(withTitle: L10n.t("clear.confirm"))
+        del.hasDestructiveAction = true
+        let cancel = alert.addButton(withTitle: L10n.t("common.cancel"))
+        cancel.keyEquivalent = "\u{1b}"   // Esc cancela (no se asigna solo en español)
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn { manager.clearAll() }
+    }
     @objc private func quit() { NSApp.terminate(nil) }
 }

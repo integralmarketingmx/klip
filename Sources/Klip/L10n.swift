@@ -58,6 +58,9 @@ enum L10n {
         "rename.info": "Un nombre te ayuda a encontrarlo después (puedes buscarlo). Déjalo vacío para quitarlo.",
         "rename.placeholder": "Ej.: API key producción, Wi-Fi oficina…",
         "rename.save": "Guardar",
+        "clear.title": "¿Borrar todo el historial?",
+        "clear.info": "Se eliminarán todos los elementos —incluidos los fijados, imágenes y audios—. No se puede deshacer.",
+        "clear.confirm": "Borrar historial",
         "common.cancel": "Cancelar",
         "badge.remote": "Otro dispositivo"
     ]
@@ -111,6 +114,9 @@ enum L10n {
         "rename.info": "A name helps you find it later (it's searchable). Leave empty to remove it.",
         "rename.placeholder": "e.g. Production API key, Office Wi-Fi…",
         "rename.save": "Save",
+        "clear.title": "Clear the whole history?",
+        "clear.info": "This removes every item —including pinned ones, images and audio—. It can't be undone.",
+        "clear.confirm": "Clear history",
         "common.cancel": "Cancel",
         "badge.remote": "Other device"
     ]

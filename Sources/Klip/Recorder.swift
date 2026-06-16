@@ -6,19 +6,20 @@ import Combine
 enum RecorderState: Equatable {
     case idle
     case recording
-    case transcribing
-    case finished(String)   // transcripción lista; el popup muestra el resultado
     case missingAPIKey
-    case error(String)
+    case error(String)      // error PREVIO a grabar (permiso/clave). La transcripción es en segundo plano.
 }
 
 /// Graba una nota de voz a .m4a y la transcribe con OpenAI (no en vivo: nota completa).
+/// La transcripción corre en segundo plano: al detener, el grabador queda libre para grabar otra.
 final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @Published private(set) var state: RecorderState = .idle
     @Published private(set) var duration: TimeInterval = 0
     @Published private(set) var level: Float = 0
     /// true cuando llevamos >2 min en silencio: la UI muestra "¿Sigues ahí?".
     @Published private(set) var silenceWarning = false
+    /// Nº de transcripciones en curso en segundo plano (para el indicador de la cabecera).
+    @Published private(set) var transcribingCount = 0
 
     /// El audio ya está guardado: crea el elemento de la nota de voz (placeholder) y devuelve su id.
     /// `audioFileName` puede ser nil si no se pudo guardar el archivo (la transcripción aún se guarda).
@@ -42,7 +43,10 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
     /// Intención de grabar pendiente (cubre la ventana del permiso async).
     private var startRequested = false
-    var isBusy: Bool { startRequested || state == .recording || state == .transcribing }
+    /// true desde que se pide detener hasta que el delegado finaliza (state sigue .recording en ese hueco).
+    private(set) var finishing = false
+    /// Solo bloquea iniciar otra GRABACIÓN; transcribir en segundo plano no cuenta como ocupado.
+    var isRecording: Bool { startRequested || state == .recording }
 
     private func requestMicPermission() async -> Bool {
         switch AVAudioApplication.shared.recordPermission {
@@ -58,7 +62,7 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
     @MainActor
     func start() {
-        guard !isBusy else { return }
+        guard !isRecording else { return }
         startRequested = true
         Task { @MainActor in
             guard client.hasAPIKey else { state = .missingAPIKey; startRequested = false; return }
@@ -97,7 +101,8 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @MainActor
     func stop() {
         startRequested = false
-        guard state == .recording, let rec = recorder else { return }
+        guard state == .recording, !finishing, let rec = recorder else { return }   // ignora doble-stop
+        finishing = true
         stopMeterTimer()
         rec.stop()   // dispara audioRecorderDidFinishRecording
     }
@@ -105,6 +110,7 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @MainActor
     func cancel() {
         startRequested = false
+        finishing = false
         stopMeterTimer()
         recorder?.delegate = nil   // evita que el delegate sobrescriba .idle con .error
         recorder?.stop()
@@ -117,7 +123,7 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     /// Vuelve a .idle desde estados terminales (error o sin API key) para revalidar al reabrir.
     func reset() {
         switch state {
-        case .error, .missingAPIKey, .finished: state = .idle
+        case .error, .missingAPIKey: state = .idle
         default: break
         }
     }
@@ -153,68 +159,46 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     /// El usuario pulsa "Continuar": resetea el contador de silencio.
     func continueRecording() { silentTicks = 0; silenceWarning = false }
 
-    /// Transcribe uno o varios archivos de audio subidos por el usuario.
+    /// Transcribe uno o varios archivos de audio subidos por el usuario (en segundo plano).
     /// Cada audio se copia a nuestro almacén para poder reproducirlo y conservarlo después.
     @MainActor
     func transcribeFiles(_ urls: [URL]) {
-        guard !urls.isEmpty, !isBusy else { return }
+        guard !urls.isEmpty else { return }
         guard client.hasAPIKey else { state = .missingAPIKey; return }
-        state = .transcribing
-        let model = Settings.shared.transcriptionModel
-        let language = Settings.shared.transcriptionLanguage
-        Task { @MainActor in
-            var okCount = 0
-            var lastError: String?
-            for url in urls {
-                let stored = storage.importAudio(from: url)          // copia a audio/ (nil si falla)
-                let id = onVoiceNoteStarted?(stored)                 // crea el elemento (con/ sin audio)
-                let transcribeURL = stored.map { storage.audioURL(for: $0) } ?? url
-                do {
-                    let text = try await client.transcribe(audioURL: transcribeURL, language: language, model: model)
-                    let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if trimmed.isEmpty {
-                        if let id { onVoiceNoteFailed?(id) }; lastError = "No se detectó voz"
-                    } else {
-                        if let id { onVoiceNoteTranscribed?(id, trimmed) }; okCount += 1
-                    }
-                } catch let e as OpenAIError {
-                    if let id { onVoiceNoteFailed?(id) }; lastError = e.errorDescription
-                } catch {
-                    if let id { onVoiceNoteFailed?(id) }; lastError = error.localizedDescription
-                }
-            }
-            // Si al menos una salió bien, cerrar normal; solo error si fallaron todas.
-            if okCount == 0, let lastError { state = .error(lastError) } else { state = .idle }
+        for url in urls {
+            let stored = storage.importAudio(from: url)                       // copia a audio/ (nil si falla)
+            let transcribeURL = stored.map { storage.audioURL(for: $0) } ?? url
+            enqueueTranscription(audioFileName: stored, transcribeURL: transcribeURL)
         }
     }
 
     /// Crea el elemento de la nota de voz con su audio ya guardado y lanza la transcripción.
     /// El audio NUNCA se borra aquí: queda accesible aunque la transcripción falle.
+    /// `state` vuelve a .idle de inmediato → el grabador queda libre para grabar otra nota.
     @MainActor
     private func ingest(audioFileName name: String) {
         storage.protectAudio(fileName: name)   // 0600: la grabación contiene voz del usuario
-        let id = onVoiceNoteStarted?(name)
-        let url = storage.audioURL(for: name)
-        state = .transcribing
+        enqueueTranscription(audioFileName: name, transcribeURL: storage.audioURL(for: name))
+        state = .idle
+    }
+
+    /// Lanza una transcripción en segundo plano: crea el elemento placeholder y lo rellena al terminar.
+    /// No toca `state` (solo el contador), así no interfiere con una grabación nueva en curso.
+    @MainActor
+    private func enqueueTranscription(audioFileName: String?, transcribeURL: URL) {
+        let id = onVoiceNoteStarted?(audioFileName)
+        transcribingCount += 1
         let model = Settings.shared.transcriptionModel       // leídos en MainActor (evita data race)
         let language = Settings.shared.transcriptionLanguage
         Task { @MainActor in
+            defer { transcribingCount -= 1 }
             do {
-                let text = try await client.transcribe(audioURL: url, language: language, model: model)
+                let text = try await client.transcribe(audioURL: transcribeURL, language: language, model: model)
                 let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.isEmpty {
-                    if let id { onVoiceNoteFailed?(id) }
-                    state = .error("No se detectó voz. El audio quedó guardado en el historial por si quieres reintentarlo.")
-                } else {
-                    if let id { onVoiceNoteTranscribed?(id, trimmed) }
-                    state = .finished(trimmed)
-                }
-            } catch let e as OpenAIError {
-                if let id { onVoiceNoteFailed?(id) }
-                state = .error((e.errorDescription ?? "Error de transcripción") + " El audio quedó guardado en el historial.")
+                if trimmed.isEmpty { if let id { onVoiceNoteFailed?(id) } }
+                else { if let id { onVoiceNoteTranscribed?(id, trimmed) } }
             } catch {
-                if let id { onVoiceNoteFailed?(id) }
-                state = .error(error.localizedDescription + " El audio quedó guardado en el historial.")
+                if let id { onVoiceNoteFailed?(id) }   // el audio queda en el historial para reintentar/recuperar
             }
         }
     }
@@ -229,9 +213,11 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
 
     func audioRecorderDidFinishRecording(_ r: AVAudioRecorder, successfully ok: Bool) {
         Task { @MainActor in
+            finishing = false
             recorder = nil
-            guard ok, let name = currentFileName else { state = .error("La grabación falló"); return }
+            guard let name = currentFileName else { return }   // cancelado: no es error, solo salir
             currentFileName = nil
+            guard ok else { state = .error("La grabación falló"); return }
             ingest(audioFileName: name)   // conserva el .m4a y transcribe
         }
     }

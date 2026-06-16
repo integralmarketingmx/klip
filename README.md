@@ -21,7 +21,8 @@ Historial de texto e imágenes · búsqueda instantánea · **notas de voz → t
 - 🔎 **Búsqueda** instantánea y **navegación por teclado** (↑/↓, Enter, `⌘1`–`⌘9`).
 - ⤵️ **Pegado automático**: eliges un elemento y se pega solo en la app activa.
 - 🖼️ **Imágenes**: previsualización grande, **guardar como archivo** y **extraer texto (OCR)** con el motor Vision de Apple (gratis, en el dispositivo).
-- 🎙️ **Notas de voz → texto**: grabas, paras, y OpenAI transcribe la nota completa al historial. **El audio original se guarda** y puedes **reproducirlo desde Klip** (▶) o abrirlo en Finder — así no pierdes nada aunque la transcripción falle.
+- 🎙️ **Notas de voz → texto**: grabas, paras, y OpenAI transcribe la nota completa **en segundo plano** (puedes grabar otra al instante). **El audio original se guarda** y puedes **reproducirlo desde Klip** (▶) o abrirlo en Finder — así no pierdes nada aunque la transcripción falle. También puedes **subir un archivo de audio** para transcribir.
+- 🏷️ **Ponle nombre a todo**: etiqueta cualquier elemento (texto, imagen, voz o credencial) y **búscalo por ese nombre**. Ideal para tus credenciales: les pones un nombre y las encuentras al instante.
 - 📝 **Markdown**: copia cualquier elemento *como Markdown* o exporta **todo el historial** a Markdown (con conversión por IA opcional).
 - 🔑 **Mini gestor de credenciales**: detecta tokens y API keys al copiarlos, los guarda **aparte y enmascarados**, con su propio filtro 🔑.
 - 📌 **Fijar**, 🗑️ **eliminar**, y **hora exacta** de copiado en cada elemento.

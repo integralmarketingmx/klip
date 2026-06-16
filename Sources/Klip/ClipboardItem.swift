@@ -23,6 +23,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     var isVoiceNote: Bool?        // transcripción de nota de voz
     var isCredential: Bool?       // marcado como credencial (token/API key)
     var audioFileName: String?    // nota de voz: archivo de audio original guardado (m4a) para reproducir
+    var name: String?             // etiqueta puesta por el usuario (título buscable; aplica a cualquier elemento)
 
     init(id: UUID = UUID(),
          kind: ClipboardKind,
@@ -36,7 +37,8 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
          isRemote: Bool? = nil,
          isVoiceNote: Bool? = nil,
          isCredential: Bool? = nil,
-         audioFileName: String? = nil) {
+         audioFileName: String? = nil,
+         name: String? = nil) {
         self.id = id
         self.kind = kind
         self.text = text
@@ -50,6 +52,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.isVoiceNote = isVoiceNote
         self.isCredential = isCredential
         self.audioFileName = audioFileName
+        self.name = name
     }
 
     // == completo: SwiftUI lo usa para decidir si re-renderiza una fila. Debe reflejar también
@@ -61,5 +64,6 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
             && lhs.isRemote == rhs.isRemote
             && lhs.text == rhs.text && lhs.preview == rhs.preview
             && lhs.imageFileName == rhs.imageFileName && lhs.audioFileName == rhs.audioFileName
+            && lhs.name == rhs.name
     }
 }

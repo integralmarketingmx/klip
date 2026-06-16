@@ -113,7 +113,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for it in items {
             let icon = it.isVoiceNote == true ? "🎙 " : (it.kind == .image ? "🖼 " : (it.isCredential == true ? "🔑 " : ""))
             let body: String
-            if it.isCredential == true { body = CredentialDetector.masked(it.text ?? "") }
+            if let nm = it.name, !nm.isEmpty { body = String(nm.prefix(45)) }   // nombre puesto por el usuario
+            else if it.isCredential == true { body = CredentialDetector.masked(it.text ?? "") }
             else if it.isVoiceNote == true {
                 // texto transcrito (evita doble 🎙); si aún no hay, usar el preview sin el emoji.
                 let tx = (it.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)

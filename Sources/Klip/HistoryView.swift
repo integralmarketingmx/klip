@@ -32,6 +32,7 @@ struct HistoryView: View {
     var onUploadAudio: () -> Void
     var onVoiceRecord: () -> Void
     var onShowGuide: () -> Void
+    var onRename: (ClipboardItem) -> Void
 
     @State private var search = ""
     @FocusState private var searchFocused: Bool
@@ -65,7 +66,11 @@ struct HistoryView: View {
         var base = sortedItems.filter { matches($0, filter) }
         guard !search.isEmpty else { return base }
         let q = search.lowercased()
-        base = base.filter { ($0.text ?? "").lowercased().contains(q) || $0.preview.lowercased().contains(q) }
+        base = base.filter {
+            ($0.name ?? "").lowercased().contains(q)
+            || ($0.text ?? "").lowercased().contains(q)
+            || $0.preview.lowercased().contains(q)
+        }
         return base
     }
 
@@ -88,6 +93,7 @@ struct HistoryView: View {
             selection.selectedIndex = sortedItems.isEmpty ? -1 : 0
             searchFocused = true
         }
+        .onChange(of: selection.focusToken) { _, _ in searchFocused = true }   // re-foco sin limpiar búsqueda
     }
 
     private func syncVisible() { selection.updateVisible(filtered.map(\.id)) }
@@ -102,13 +108,21 @@ struct HistoryView: View {
                 }
                 Text("Klip").font(.system(size: 15, weight: .semibold))
                 Spacer()
+                if recorder.transcribingCount > 0 {
+                    HStack(spacing: 4) {
+                        ProgressView().controlSize(.small)
+                        Text("\(recorder.transcribingCount)").font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                    .help(L10n.t("rec.transcribing"))
+                }
                 Button { onVoiceRecord() } label: {
                     Image(systemName: recorder.state == .recording ? "mic.fill" : "mic")
                         .foregroundStyle(recorder.state == .recording ? .red : .primary)
                 }
                 .buttonStyle(.borderless).help(L10n.t("rec.record"))
+                Button { onUploadAudio() } label: { Image(systemName: "waveform.badge.plus") }
+                    .buttonStyle(.borderless).help(L10n.t("act.upload"))
                 Menu {
-                    Button { onUploadAudio() } label: { Label(L10n.t("act.upload"), systemImage: "waveform.badge.plus") }
                     Button { onCopyAllMarkdown() } label: { Label(L10n.t("act.copyallmd"), systemImage: "doc.richtext") }
                     Divider()
                     Button { onShowGuide() } label: { Label(L10n.t("act.guide"), systemImage: "questionmark.circle") }
@@ -165,7 +179,8 @@ struct HistoryView: View {
                                 resetToken: selection.openToken,
                                 manager: manager,
                                 onPick: onPick, onSaveImage: onSaveImage,
-                                onCopyMarkdown: onCopyMarkdown, onOCR: { runOCR(item) })
+                                onCopyMarkdown: onCopyMarkdown, onOCR: { runOCR(item) },
+                                onRename: onRename)
                             .id(item.id)
                         if ocrResultID == item.id { ocrBox }
                     }
@@ -231,12 +246,17 @@ struct ItemRow: View {
     var onSaveImage: (ClipboardItem) -> Void
     var onCopyMarkdown: (ClipboardItem) -> Void
     var onOCR: () -> Void
+    var onRename: (ClipboardItem) -> Void
 
     @State private var hovering = false
     @State private var revealed = false
 
     private var isCredential: Bool { item.isCredential == true }
     private var hasText: Bool { !(item.text?.isEmpty ?? true) }
+    private var customName: String? {
+        guard let nm = item.name, !nm.isEmpty else { return nil }
+        return nm
+    }
 
     /// Audio reproducible de una nota de voz (solo si el archivo sigue en disco).
     private var voiceAudioFile: String? {
@@ -246,7 +266,8 @@ struct ItemRow: View {
     }
 
     private var displayedPreview: String {
-        if isCredential, !revealed, let t = item.text { return CredentialDetector.masked(t) }
+        // El ojo alterna enmascarado/real (item.preview siempre está enmascarado para credenciales).
+        if isCredential, let t = item.text { return revealed ? t : CredentialDetector.masked(t) }
         return item.preview.isEmpty ? "(vacío)" : item.preview
     }
 
@@ -282,10 +303,15 @@ struct ItemRow: View {
                         .padding(6)
                 }
             }
-            HStack(spacing: 6) {
-                metadata
-                Spacer(minLength: 4)
-                if hovering { actions } else if item.pinned { pinDot }
+            VStack(alignment: .leading, spacing: 2) {
+                if let nm = customName {
+                    Text(nm).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                }
+                HStack(spacing: 6) {
+                    metadata
+                    Spacer(minLength: 4)
+                    if hovering { actions } else if item.pinned { pinDot }
+                }
             }
         }
         .padding(8)
@@ -295,8 +321,15 @@ struct ItemRow: View {
         HStack(spacing: 10) {
             thumbnail
             VStack(alignment: .leading, spacing: 3) {
-                Text(displayedPreview)
-                    .lineLimit(2).font(.system(size: 13, design: isCredential ? .monospaced : .default))
+                if let nm = customName {
+                    Text(nm).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                    Text(displayedPreview)
+                        .lineLimit(1).font(.system(size: 11, design: isCredential ? .monospaced : .default))
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text(displayedPreview)
+                        .lineLimit(2).font(.system(size: 13, design: isCredential ? .monospaced : .default))
+                }
                 metadata
             }
             Spacer(minLength: 4)
@@ -352,15 +385,16 @@ struct ItemRow: View {
                 iconButton("doc.on.doc", L10n.t("row.copy")) { onPick(item) }
                 iconButton("square.and.arrow.down", L10n.t("row.save")) { onSaveImage(item) }
                 iconButton("text.viewfinder", L10n.t("row.ocr")) { onOCR() }
+            } else if isCredential {
+                iconButton("doc.on.doc", L10n.t("row.copy")) { onPick(item) }
+                iconButton(revealed ? "eye.slash" : "eye", L10n.t("row.reveal")) { revealed.toggle() }
+                iconButton("key.slash", L10n.t("row.unmarkcred")) { manager.toggleCredential(item) }
             } else {
                 iconButton("doc.on.doc", L10n.t("row.copy")) { onPick(item) }
                 iconButton("doc.richtext", L10n.t("row.markdown")) { onCopyMarkdown(item) }
-                if isCredential {
-                    iconButton(revealed ? "eye.slash" : "eye", L10n.t("row.reveal")) { revealed.toggle() }
-                }
-                iconButton(isCredential ? "key.slash" : "key",
-                           L10n.t(isCredential ? "row.unmarkcred" : "row.markcred")) { manager.toggleCredential(item) }
+                iconButton("key", L10n.t("row.markcred")) { manager.toggleCredential(item) }
             }
+            iconButton("pencil", L10n.t("row.rename")) { onRename(item) }
             iconButton(item.pinned ? "pin.slash" : "pin", L10n.t(item.pinned ? "row.unpin" : "row.pin")) {
                 manager.togglePin(item)
             }

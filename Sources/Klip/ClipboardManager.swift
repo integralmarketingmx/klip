@@ -149,6 +149,7 @@ final class ClipboardManager: ObservableObject {
 
     static let voiceTranscribing = "🎙 Transcribiendo…"
     static let voiceFailed = "🎙 Nota de voz (sin transcripción · reproduce el audio)"
+    static let voiceFailedNoAudio = "🎙 Nota de voz (no se pudo transcribir)"
 
     private static func voicePreview(_ clean: String) -> String {
         "🎙 " + String(clean.prefix(160))
@@ -180,15 +181,12 @@ final class ClipboardManager: ObservableObject {
         if !clean.isEmpty { copyToPasteboard(item) }   // sin re-capturar (actualiza lastChangeCount)
     }
 
-    /// La transcripción falló: conserva el audio si existe; si no hay nada útil, elimina el elemento.
+    /// La transcripción falló: deja el elemento visible (con audio reproducible si lo hay) en vez de
+    /// borrarlo en silencio, para que el usuario sepa qué pasó y pueda recuperarlo o eliminarlo.
     func failVoiceNote(id: UUID) {
         guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
-        if items[idx].audioFileName == nil {
-            items.remove(at: idx)          // sin audio ni texto: no aporta nada
-        } else {
-            items[idx].text = nil
-            items[idx].preview = Self.voiceFailed
-        }
+        items[idx].text = nil
+        items[idx].preview = items[idx].audioFileName != nil ? Self.voiceFailed : Self.voiceFailedNoAudio
         storage.saveItems(items)
     }
 
@@ -266,6 +264,14 @@ final class ClipboardManager: ObservableObject {
         guard let idx = items.firstIndex(where: { $0.id == item.id }) else { return }
         items[idx].pinned.toggle()
         trimAndSave()   // re-evaluar el recorte al desfijar (puede exceder maxItems)
+    }
+
+    /// Pone (o quita) la etiqueta/nombre de un elemento. El nombre es buscable y se muestra como título.
+    func rename(_ item: ClipboardItem, to name: String) {
+        guard let idx = items.firstIndex(where: { $0.id == item.id }) else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        items[idx].name = trimmed.isEmpty ? nil : trimmed
+        storage.saveItems(items)
     }
 
     /// Marca o desmarca un elemento como credencial (mini gestor).

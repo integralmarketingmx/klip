@@ -26,11 +26,11 @@ final class PanelController: NSObject, NSWindowDelegate {
     private var localClickMonitor: Any?
     private var globalClickMonitor: Any?
     private var isSavingImage = false
+    private var isRenaming = false
     private let cornerRadius: CGFloat = 12
     private var recordingPanel: NSPanel?
     private var guideWindow: NSWindow?
     private var uploadWindow: NSWindow?
-    private var pendingPaste = false
 
     init(manager: ClipboardManager, statusItem: NSStatusItem?) {
         self.manager = manager
@@ -55,7 +55,8 @@ final class PanelController: NSObject, NSWindowDelegate {
             onOpenPreferences: { [weak self] in self?.onOpenPreferences?() },
             onUploadAudio: { [weak self] in self?.uploadAudio() },
             onVoiceRecord: { [weak self] in self?.toggleVoiceRecording() },
-            onShowGuide: { [weak self] in self?.showGuide() }
+            onShowGuide: { [weak self] in self?.showGuide() },
+            onRename: { [weak self] item in self?.renameItem(item) }
         )
 
         let panel = KeyablePanel(
@@ -133,7 +134,7 @@ final class PanelController: NSObject, NSWindowDelegate {
             matching: [.leftMouseDown, .rightMouseDown]) { e in e }
         globalClickMonitor = NSEvent.addGlobalMonitorForEvents(
             matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            guard let self, !self.isSavingImage, !self.recorder.isBusy else { return }
+            guard let self, !self.isSavingImage, !self.isRenaming, !self.recorder.isRecording else { return }
             self.hide(restoreFocus: false)
         }
     }
@@ -146,12 +147,13 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     private func handleKeyDown(_ event: NSEvent) -> NSEvent? {
+        if isRenaming { return event }   // el diálogo de renombrar maneja sus propias teclas
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
 
         if event.keyCode == 53 {   // Esc (el monitor siempre corre en el hilo principal)
             if recorder.state == .recording {
                 MainActor.assumeIsolated { recorder.cancel() }   // aborta la grabación, no cierra
-            } else if !recorder.isBusy {
+            } else if !recorder.isRecording {
                 hide(restoreFocus: true)                         // no cerrar mientras transcribe
             }
             return nil
@@ -249,11 +251,10 @@ final class PanelController: NSObject, NSWindowDelegate {
     func toggleVoiceRecording() {
         MainActor.assumeIsolated {
             if recorder.state == .recording { recorder.stop(); return }
-            guard !recorder.isBusy else { return }
+            guard !recorder.isRecording else { return }
             if recordingPanel?.isVisible != true {   // al re-grabar con el popup abierto, conservar la app original
                 previousApp = NSWorkspace.shared.frontmostApplication
             }
-            pendingPaste = false                                    // (el estado ya queda en .idle al cerrar)
             showRecordingPopup()
             recorder.start()
         }
@@ -266,7 +267,6 @@ final class PanelController: NSObject, NSWindowDelegate {
                 onStop: { [weak self] in MainActor.assumeIsolated { self?.recorder.stop() } },
                 onCancel: { [weak self] in MainActor.assumeIsolated { self?.recorder.cancel() } },
                 onClose: { [weak self] in self?.closeRecordingPopup() },
-                onPaste: { [weak self] in self?.pendingPaste = true; self?.recorder.reset() },
                 onOpenPreferences: { [weak self] in self?.onOpenPreferences?() }
             )
             let p = KeyablePanel(contentRect: NSRect(x: 0, y: 0, width: 360, height: 320),
@@ -293,9 +293,7 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     private func closeRecordingPopup() {
         recordingPanel?.orderOut(nil)
-        let target = previousApp
-        if pendingPaste { pendingPaste = false; pasteOrRestore(target) }   // pegar la nota transcrita
-        else { target?.activate() }                                        // solo devolver el foco
+        previousApp?.activate()   // la transcripción corre en 2º plano; solo devolvemos el foco
     }
 
     func showGuide() {
@@ -312,14 +310,18 @@ final class PanelController: NSObject, NSWindowDelegate {
         guideWindow?.makeKeyAndOrderFront(nil)
     }
 
-    private func uploadAudio() { showUploadWindow() }
+    private func uploadAudio() {
+        // El recorder.state es compartido; limpia un .error/.missingAPIKey previo para mostrar la dropzone.
+        if recorder.state != .recording { recorder.reset() }
+        showUploadWindow()
+    }
 
     private func showUploadWindow() {
         if uploadWindow == nil {
             let view = UploadView(
                 recorder: recorder,
                 onChoose: { [weak self] in self?.chooseAudioFiles() },
-                onFiles: { [weak self] urls in MainActor.assumeIsolated { self?.recorder.transcribeFiles(urls) } },
+                onFiles: { [weak self] urls in MainActor.assumeIsolated { self?.submitAudioFiles(urls) } },
                 onClose: { [weak self] in self?.uploadWindow?.orderOut(nil) },
                 onOpenPreferences: { [weak self] in self?.onOpenPreferences?() }
             )
@@ -343,7 +345,39 @@ final class PanelController: NSObject, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
         p.begin { [weak self] resp in
             guard resp == .OK, !p.urls.isEmpty else { return }
-            MainActor.assumeIsolated { self?.recorder.transcribeFiles(p.urls) }
+            MainActor.assumeIsolated { self?.submitAudioFiles(p.urls) }
+        }
+    }
+
+    /// Manda los audios a transcribir (en 2º plano) y cierra la ventana de subida salvo que falte la API key.
+    @MainActor
+    private func submitAudioFiles(_ urls: [URL]) {
+        recorder.transcribeFiles(urls)
+        if recorder.state != .missingAPIKey { uploadWindow?.orderOut(nil) }
+    }
+
+    /// Diálogo para ponerle (o cambiarle) el nombre a cualquier elemento. Buscable después.
+    private func renameItem(_ item: ClipboardItem) {
+        let alert = NSAlert()
+        alert.messageText = L10n.t("rename.title")
+        alert.informativeText = L10n.t("rename.info")
+        alert.addButton(withTitle: L10n.t("rename.save"))
+        let cancel = alert.addButton(withTitle: L10n.t("common.cancel"))
+        cancel.keyEquivalent = "\u{1b}"   // Esc cancela (no se asigna solo en español)
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        field.stringValue = item.name ?? ""
+        field.placeholderString = L10n.t("rename.placeholder")
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+
+        isRenaming = true
+        NSApp.activate(ignoringOtherApps: true)
+        let resp = alert.runModal()
+        isRenaming = false
+        if resp == .alertFirstButtonReturn { manager.rename(item, to: field.stringValue) }
+        if panel.isVisible {
+            panel.makeKeyAndOrderFront(nil)
+            selection.focusToken &+= 1   // devolver el foco al buscador (sin limpiar búsqueda/filtro)
         }
     }
 
@@ -366,10 +400,10 @@ final class PanelController: NSObject, NSWindowDelegate {
     // MARK: - NSWindowDelegate (respaldo de cierre al perder el foco)
 
     func windowDidResignKey(_ notification: Notification) {
-        guard !isSavingImage, !recorder.isBusy else { return }
+        guard !isSavingImage, !isRenaming, !recorder.isRecording else { return }
         DispatchQueue.main.async { [weak self] in
-            guard let self, self.panel.isVisible, !self.isSavingImage, !self.recorder.isBusy,
-                  !self.panel.isKeyWindow else { return }
+            guard let self, self.panel.isVisible, !self.isSavingImage, !self.isRenaming,
+                  !self.recorder.isRecording, !self.panel.isKeyWindow else { return }
             self.hide(restoreFocus: false)
         }
     }

@@ -6,7 +6,6 @@ struct RecordingView: View {
     var onStop: () -> Void
     var onCancel: () -> Void
     var onClose: () -> Void
-    var onPaste: () -> Void
     var onOpenPreferences: () -> Void
 
     var body: some View {
@@ -55,37 +54,6 @@ struct RecordingView: View {
                     }
                 }.padding()
             }
-
-        case .transcribing:
-            VStack(spacing: 14) {
-                ProgressView().controlSize(.large)
-                Text("Transcribiendo…").font(.headline)
-                Text("Enviando a OpenAI").font(.caption).foregroundStyle(.secondary)
-            }.padding()
-
-        case .finished(let text):
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                    Text("Transcripción lista").font(.headline)
-                }
-                ScrollView {
-                    Text(text)
-                        .font(.system(size: 13)).textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(maxHeight: 150)
-                .padding(8)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.05)))
-                Label("Nota y audio guardados en el historial.", systemImage: "waveform")
-                    .font(.caption).foregroundStyle(.secondary)
-                HStack {
-                    Button("Cerrar") { recorder.reset() }
-                    Spacer()
-                    Button { onPaste() } label: { Label("Pegar en la app", systemImage: "arrow.down.doc") }
-                        .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
-                }
-            }.padding()
 
         case .missingAPIKey:
             VStack(spacing: 12) {

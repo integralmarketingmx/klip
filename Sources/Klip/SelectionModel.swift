@@ -10,6 +10,8 @@ final class SelectionModel: ObservableObject {
     @Published var selectedIndex: Int = 0
     /// Se incrementa en cada apertura del panel para que la vista resetee búsqueda y foco.
     @Published var openToken: Int = 0
+    /// Se incrementa para devolver el foco al buscador SIN limpiar búsqueda/filtro (p.ej. tras renombrar).
+    @Published var focusToken: Int = 0
 
     var visibleCount: Int { visibleIDs.count }
 

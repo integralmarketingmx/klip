@@ -11,17 +11,12 @@ struct UploadView: View {
     var onOpenPreferences: () -> Void
 
     @State private var hovering = false
-    @State private var started = false
 
     private let exts = ["m4a", "mp3", "wav", "mp4", "aac", "aiff", "flac", "ogg", "webm", "mpga", "mpeg", "m4b"]
 
     var body: some View {
         VStack(spacing: 14) {
             switch recorder.state {
-            case .transcribing:
-                ProgressView().controlSize(.large)
-                Text("Transcribiendo…").font(.headline)
-                Text("Enviando a OpenAI").font(.caption).foregroundStyle(.secondary)
             case .missingAPIKey:
                 Image(systemName: "key.slash").font(.system(size: 34)).foregroundStyle(.orange)
                 Text("Falta tu API key de OpenAI").font(.headline)
@@ -36,20 +31,12 @@ struct UploadView: View {
             default:
                 Text("Subir audio para transcribir").font(.headline)
                 dropZone
-                Text("Formatos: m4a, mp3, wav, mp4, flac…  ·  Se transcriben con OpenAI.")
+                Text("Se transcriben en segundo plano y aparecen en el historial.\nFormatos: m4a, mp3, wav, mp4, flac…")
                     .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 Button("Cerrar") { onClose() }
             }
         }
         .frame(width: 380, height: 300).padding()
-        .onChange(of: recorder.state) { _, s in
-            switch s {
-            case .transcribing: started = true
-            case .idle: if started { started = false; onClose() }
-            case .error: started = false
-            default: break
-            }
-        }
     }
 
     private var dropZone: some View {

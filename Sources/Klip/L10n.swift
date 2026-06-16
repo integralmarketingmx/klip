@@ -47,8 +47,14 @@ enum L10n {
         "row.reveal": "Mostrar / ocultar",
         "row.markcred": "Marcar como credencial",
         "row.unmarkcred": "Quitar de credenciales",
+        "row.rename": "Poner nombre",
         "voice.play": "Reproducir / detener audio",
         "voice.reveal": "Mostrar audio en Finder",
+        "rename.title": "Ponle un nombre",
+        "rename.info": "Un nombre te ayuda a encontrarlo después (puedes buscarlo). Déjalo vacío para quitarlo.",
+        "rename.placeholder": "Ej.: API key producción, Wi-Fi oficina…",
+        "rename.save": "Guardar",
+        "common.cancel": "Cancelar",
         "badge.remote": "Otro dispositivo"
     ]
 
@@ -90,8 +96,14 @@ enum L10n {
         "row.reveal": "Show / hide",
         "row.markcred": "Mark as credential",
         "row.unmarkcred": "Remove from credentials",
+        "row.rename": "Name it",
         "voice.play": "Play / stop audio",
         "voice.reveal": "Show audio in Finder",
+        "rename.title": "Give it a name",
+        "rename.info": "A name helps you find it later (it's searchable). Leave empty to remove it.",
+        "rename.placeholder": "e.g. Production API key, Office Wi-Fi…",
+        "rename.save": "Save",
+        "common.cancel": "Cancel",
         "badge.remote": "Other device"
     ]
 }

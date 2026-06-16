@@ -20,8 +20,13 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     /// true cuando llevamos >2 min en silencio: la UI muestra "¿Sigues ahí?".
     @Published private(set) var silenceWarning = false
 
-    /// Se invoca (en main) con el texto transcrito al terminar con éxito.
-    var onTranscribed: ((String) -> Void)?
+    /// El audio ya está guardado: crea el elemento de la nota de voz (placeholder) y devuelve su id.
+    /// `audioFileName` puede ser nil si no se pudo guardar el archivo (la transcripción aún se guarda).
+    var onVoiceNoteStarted: ((String?) -> UUID?)?
+    /// Rellena la transcripción en el elemento ya creado.
+    var onVoiceNoteTranscribed: ((UUID, String) -> Void)?
+    /// La transcripción falló o no hubo voz: el elemento queda con el audio para reproducir/recuperar.
+    var onVoiceNoteFailed: ((UUID) -> Void)?
 
     // Detección de silencio (timer a 0.1 s): aviso a 2 min, corte a 3 min.
     private var silentTicks = 0
@@ -149,29 +154,68 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     func continueRecording() { silentTicks = 0; silenceWarning = false }
 
     /// Transcribe uno o varios archivos de audio subidos por el usuario.
+    /// Cada audio se copia a nuestro almacén para poder reproducirlo y conservarlo después.
     @MainActor
     func transcribeFiles(_ urls: [URL]) {
         guard !urls.isEmpty, !isBusy else { return }
         guard client.hasAPIKey else { state = .missingAPIKey; return }
         state = .transcribing
+        let model = Settings.shared.transcriptionModel
+        let language = Settings.shared.transcriptionLanguage
         Task { @MainActor in
-            let model = Settings.shared.transcriptionModel
-            let language = Settings.shared.transcriptionLanguage
             var okCount = 0
             var lastError: String?
             for url in urls {
+                let stored = storage.importAudio(from: url)          // copia a audio/ (nil si falla)
+                let id = onVoiceNoteStarted?(stored)                 // crea el elemento (con/ sin audio)
+                let transcribeURL = stored.map { storage.audioURL(for: $0) } ?? url
                 do {
-                    let text = try await client.transcribe(audioURL: url, language: language, model: model)
+                    let text = try await client.transcribe(audioURL: transcribeURL, language: language, model: model)
                     let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !trimmed.isEmpty { onTranscribed?(trimmed); okCount += 1 }
+                    if trimmed.isEmpty {
+                        if let id { onVoiceNoteFailed?(id) }; lastError = "No se detectó voz"
+                    } else {
+                        if let id { onVoiceNoteTranscribed?(id, trimmed) }; okCount += 1
+                    }
                 } catch let e as OpenAIError {
-                    lastError = e.errorDescription
+                    if let id { onVoiceNoteFailed?(id) }; lastError = e.errorDescription
                 } catch {
-                    lastError = error.localizedDescription
+                    if let id { onVoiceNoteFailed?(id) }; lastError = error.localizedDescription
                 }
             }
             // Si al menos una salió bien, cerrar normal; solo error si fallaron todas.
             if okCount == 0, let lastError { state = .error(lastError) } else { state = .idle }
+        }
+    }
+
+    /// Crea el elemento de la nota de voz con su audio ya guardado y lanza la transcripción.
+    /// El audio NUNCA se borra aquí: queda accesible aunque la transcripción falle.
+    @MainActor
+    private func ingest(audioFileName name: String) {
+        storage.protectAudio(fileName: name)   // 0600: la grabación contiene voz del usuario
+        let id = onVoiceNoteStarted?(name)
+        let url = storage.audioURL(for: name)
+        state = .transcribing
+        let model = Settings.shared.transcriptionModel       // leídos en MainActor (evita data race)
+        let language = Settings.shared.transcriptionLanguage
+        Task { @MainActor in
+            do {
+                let text = try await client.transcribe(audioURL: url, language: language, model: model)
+                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.isEmpty {
+                    if let id { onVoiceNoteFailed?(id) }
+                    state = .error("No se detectó voz. El audio quedó guardado en el historial por si quieres reintentarlo.")
+                } else {
+                    if let id { onVoiceNoteTranscribed?(id, trimmed) }
+                    state = .finished(trimmed)
+                }
+            } catch let e as OpenAIError {
+                if let id { onVoiceNoteFailed?(id) }
+                state = .error((e.errorDescription ?? "Error de transcripción") + " El audio quedó guardado en el historial.")
+            } catch {
+                if let id { onVoiceNoteFailed?(id) }
+                state = .error(error.localizedDescription + " El audio quedó guardado en el historial.")
+            }
         }
     }
 
@@ -188,25 +232,7 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
             recorder = nil
             guard ok, let name = currentFileName else { state = .error("La grabación falló"); return }
             currentFileName = nil
-            defer { storage.deleteAudio(fileName: name) }        // borrar el .m4a en TODOS los caminos
-            let url = storage.audioURL(for: name)
-            state = .transcribing
-            let model = Settings.shared.transcriptionModel       // leídos en MainActor (evita data race)
-            let language = Settings.shared.transcriptionLanguage
-            do {
-                let text = try await client.transcribe(audioURL: url, language: language, model: model)
-                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.isEmpty {
-                    state = .error("No se detectó voz. Intenta de nuevo.")
-                } else {
-                    onTranscribed?(trimmed)     // guardar en el historial
-                    state = .finished(trimmed)  // mostrar el resultado (no cerrar solo)
-                }
-            } catch let e as OpenAIError {
-                state = .error(e.errorDescription ?? "Error de transcripción")
-            } catch {
-                state = .error(error.localizedDescription)
-            }
+            ingest(audioFileName: name)   // conserva el .m4a y transcribe
         }
     }
 }

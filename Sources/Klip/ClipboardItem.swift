@@ -22,6 +22,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     var isRemote: Bool?           // heurística: "otro dispositivo Apple"
     var isVoiceNote: Bool?        // transcripción de nota de voz
     var isCredential: Bool?       // marcado como credencial (token/API key)
+    var audioFileName: String?    // nota de voz: archivo de audio original guardado (m4a) para reproducir
 
     init(id: UUID = UUID(),
          kind: ClipboardKind,
@@ -34,7 +35,8 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
          sourceBundleID: String? = nil,
          isRemote: Bool? = nil,
          isVoiceNote: Bool? = nil,
-         isCredential: Bool? = nil) {
+         isCredential: Bool? = nil,
+         audioFileName: String? = nil) {
         self.id = id
         self.kind = kind
         self.text = text
@@ -47,12 +49,17 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.isRemote = isRemote
         self.isVoiceNote = isVoiceNote
         self.isCredential = isCredential
+        self.audioFileName = audioFileName
     }
 
-    // == se mantiene por id/pinned/createdAt para no alterar el dedupe/orden de la lista.
+    // == completo: SwiftUI lo usa para decidir si re-renderiza una fila. Debe reflejar también
+    // text/preview/audioFileName para que la nota de voz se actualice al pasar de "Transcribiendo…"
+    // a su texto final (y al guardarse su audio).
     static func == (lhs: ClipboardItem, rhs: ClipboardItem) -> Bool {
         lhs.id == rhs.id && lhs.pinned == rhs.pinned && lhs.createdAt == rhs.createdAt
             && lhs.isCredential == rhs.isCredential && lhs.isVoiceNote == rhs.isVoiceNote
             && lhs.isRemote == rhs.isRemote
+            && lhs.text == rhs.text && lhs.preview == rhs.preview
+            && lhs.imageFileName == rhs.imageFileName && lhs.audioFileName == rhs.audioFileName
     }
 }

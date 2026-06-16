@@ -40,7 +40,9 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     private func buildPanel() {
-        recorder.onTranscribed = { [weak self] text in self?.manager.addVoiceNoteText(text) }
+        recorder.onVoiceNoteStarted = { [weak self] fn in self?.manager.beginVoiceNote(audioFileName: fn) }
+        recorder.onVoiceNoteTranscribed = { [weak self] id, text in self?.manager.finishVoiceNote(id: id, text: text) }
+        recorder.onVoiceNoteFailed = { [weak self] id in self?.manager.failVoiceNote(id: id) }
 
         let root = HistoryView(
             manager: manager,
@@ -114,6 +116,7 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     func hide(restoreFocus: Bool = true) {
         removeMonitors()
+        AudioPlayer.shared.stop()   // no dejar audio sonando al cerrar el panel
         panel.orderOut(nil)
         if restoreFocus { previousApp?.activate() }
     }
@@ -201,6 +204,11 @@ final class PanelController: NSObject, NSWindowDelegate {
     // MARK: - Acciones
 
     private func pick(_ item: ClipboardItem) {
+        // Nota de voz sin transcripción: no hay texto que pegar → reproducir el audio y dejar el panel abierto.
+        if item.kind == .text, (item.text?.isEmpty ?? true) {
+            if let af = item.audioFileName { AudioPlayer.shared.toggle(fileName: af) }
+            return
+        }
         manager.copyToPasteboard(item)
         let target = previousApp
         hide(restoreFocus: false)

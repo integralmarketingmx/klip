@@ -21,7 +21,7 @@ Historial de texto e imágenes · búsqueda instantánea · **notas de voz → t
 - 🔎 **Búsqueda** instantánea y **navegación por teclado** (↑/↓, Enter, `⌘1`–`⌘9`).
 - ⤵️ **Pegado automático**: eliges un elemento y se pega solo en la app activa.
 - 🖼️ **Imágenes**: previsualización grande, **guardar como archivo** y **extraer texto (OCR)** con el motor Vision de Apple (gratis, en el dispositivo).
-- 🎙️ **Notas de voz → texto**: grabas, paras, y OpenAI transcribe la nota completa al historial.
+- 🎙️ **Notas de voz → texto**: grabas, paras, y OpenAI transcribe la nota completa al historial. **El audio original se guarda** y puedes **reproducirlo desde Klip** (▶) o abrirlo en Finder — así no pierdes nada aunque la transcripción falle.
 - 📝 **Markdown**: copia cualquier elemento *como Markdown* o exporta **todo el historial** a Markdown (con conversión por IA opcional).
 - 🔑 **Mini gestor de credenciales**: detecta tokens y API keys al copiarlos, los guarda **aparte y enmascarados**, con su propio filtro 🔑.
 - 📌 **Fijar**, 🗑️ **eliminar**, y **hora exacta** de copiado en cada elemento.
@@ -86,9 +86,9 @@ Abre **Preferencias** (`⌘,` desde el menú de Klip):
 
 ## 🔐 Privacidad
 
-- **Local primero**: tu historial vive en `~/Library/Application Support/Klip/` (`items.json` + `images/`). Nada sale de tu Mac salvo el audio que **tú** envías a OpenAI para transcribir.
+- **Local primero**: tu historial vive en `~/Library/Application Support/Klip/` (`items.json` + `images/` + `audio/`). Nada sale de tu Mac salvo el audio que **tú** envías a OpenAI para transcribir.
 - **Sin secretos en el repo**: la API key se guarda en un **archivo local** (`~/Library/Application Support/Klip/openai.key`, permisos `0600`), jamás en el código ni en el repositorio.
-- El **historial** (`items.json`) también se guarda solo en tu Mac con permisos `0600`. El enmascarado de credenciales es visual; el contenido vive localmente como el resto del historial.
+- El **historial** (`items.json`), las **imágenes** y el **audio** de las notas de voz se guardan solo en tu Mac con permisos `0600` (carpetas `0700`). El enmascarado de credenciales es visual; el contenido vive localmente como el resto del historial.
 - **Sin telemetría**.
 - Klip **ignora** el contenido marcado como oculto por los gestores de contraseñas, y puedes **excluir** apps concretas.
 - Los **tokens/API keys** que copies se detectan y se guardan **enmascarados** (filtro 🔑).

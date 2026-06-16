@@ -76,9 +76,14 @@ struct UploadView: View {
         for p in providers {
             group.enter()
             p.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
-                if let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) { urls.append(url) }
-                else if let url = item as? URL { urls.append(url) }
-                group.leave()
+                // loadItem entrega su callback en una cola interna arbitraria y los providers corren en
+                // paralelo: acumular en main serializa los append (Array no es thread-safe).
+                let resolved: URL? = (item as? Data).flatMap { URL(dataRepresentation: $0, relativeTo: nil) }
+                    ?? (item as? URL)
+                DispatchQueue.main.async {
+                    if let resolved { urls.append(resolved) }
+                    group.leave()
+                }
             }
         }
         group.notify(queue: .main) {

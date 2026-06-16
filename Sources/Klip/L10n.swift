@@ -47,6 +47,8 @@ enum L10n {
         "row.reveal": "Mostrar / ocultar",
         "row.markcred": "Marcar como credencial",
         "row.unmarkcred": "Quitar de credenciales",
+        "voice.play": "Reproducir / detener audio",
+        "voice.reveal": "Mostrar audio en Finder",
         "badge.remote": "Otro dispositivo"
     ]
 
@@ -88,6 +90,8 @@ enum L10n {
         "row.reveal": "Show / hide",
         "row.markcred": "Mark as credential",
         "row.unmarkcred": "Remove from credentials",
+        "voice.play": "Play / stop audio",
+        "voice.reveal": "Show audio in Finder",
         "badge.remote": "Other device"
     ]
 }

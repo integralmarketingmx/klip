@@ -21,6 +21,33 @@ final class ClipboardManager: ObservableObject {
     init() {
         lastChangeCount = NSPasteboard.general.changeCount
         items = storage.loadItems()
+        reconcileVoiceNotesOnLoad()
+        // Limpieza de huérfanos (audio/imágenes sin item, p.ej. tras un cierre a media transcripción).
+        // Solo si hay items: items vacío también ocurre si items.json está corrupto/ilegible, y en ese
+        // caso barrer borraría TODA la media (evitamos esa pérdida; los archivos siguen ahí para recuperar).
+        if !items.isEmpty {
+            storage.pruneOrphans(
+                referencedAudio: Set(items.compactMap { $0.audioFileName }),
+                referencedImages: Set(items.compactMap { $0.imageFileName }))
+        }
+    }
+
+    /// Repara notas de voz que quedaron en "Transcribiendo…" (la app se cerró durante la transcripción):
+    /// si conservan su audio, pasan a "sin transcripción" (recuperable); si no, se descartan.
+    private func reconcileVoiceNotesOnLoad() {
+        var changed = false
+        for idx in items.indices where items[idx].isVoiceNote == true && items[idx].preview == Self.voiceTranscribing {
+            if let af = items[idx].audioFileName, storage.audioExists(fileName: af) {
+                items[idx].text = nil
+                items[idx].preview = Self.voiceFailed
+            } else {
+                items[idx].audioFileName = nil   // marca para eliminar
+            }
+            changed = true
+        }
+        let before = items.count
+        items.removeAll { $0.isVoiceNote == true && $0.preview == Self.voiceTranscribing && $0.audioFileName == nil }
+        if changed || items.count != before { storage.saveItems(items) }
     }
 
     func start() {
@@ -118,31 +145,71 @@ final class ClipboardManager: ObservableObject {
         trimAndSave()
     }
 
-    /// Inserta una transcripción de voz como elemento de texto y la deja en el portapapeles.
-    func addVoiceNoteText(_ text: String) {
-        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty else { return }
-        let preview = "🎙 " + String(clean.prefix(160))
+    // MARK: - Notas de voz (audio guardado + transcripción en 3 pasos)
+
+    static let voiceTranscribing = "🎙 Transcribiendo…"
+    static let voiceFailed = "🎙 Nota de voz (sin transcripción · reproduce el audio)"
+
+    private static func voicePreview(_ clean: String) -> String {
+        "🎙 " + String(clean.prefix(160))
             .replacingOccurrences(of: "\n", with: " ")
             .trimmingCharacters(in: .whitespaces)
-        items.insert(ClipboardItem(kind: .text, text: clean, preview: preview, isVoiceNote: true), at: 0)
+    }
+
+    /// Crea el elemento de la nota de voz con su audio (placeholder "Transcribiendo…") y devuelve su id.
+    @discardableResult
+    func beginVoiceNote(audioFileName: String?) -> UUID {
+        let item = ClipboardItem(kind: .text, preview: Self.voiceTranscribing,
+                                 isVoiceNote: true, audioFileName: audioFileName)
+        items.insert(item, at: 0)
         trimAndSave()
-        copyToPasteboard(items[0])   // listo para pegar, sin re-capturar (actualiza lastChangeCount)
+        return item.id
+    }
+
+    /// Rellena la transcripción y la deja en el portapapeles, lista para pegar.
+    func finishVoiceNote(id: UUID, text: String) {
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let idx = items.firstIndex(where: { $0.id == id }) else {
+            if !clean.isEmpty { setClipboardText(clean) }   // el placeholder ya no existe: al menos no perder el texto
+            return
+        }
+        items[idx].text = clean.isEmpty ? nil : clean
+        items[idx].preview = clean.isEmpty ? Self.voiceFailed : Self.voicePreview(clean)
+        let item = items[idx]
+        trimAndSave()
+        if !clean.isEmpty { copyToPasteboard(item) }   // sin re-capturar (actualiza lastChangeCount)
+    }
+
+    /// La transcripción falló: conserva el audio si existe; si no hay nada útil, elimina el elemento.
+    func failVoiceNote(id: UUID) {
+        guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
+        if items[idx].audioFileName == nil {
+            items.remove(at: idx)          // sin audio ni texto: no aporta nada
+        } else {
+            items[idx].text = nil
+            items[idx].preview = Self.voiceFailed
+        }
+        storage.saveItems(items)
+    }
+
+    /// No se recorta: ni los fijados ni una nota de voz aún transcribiéndose (se perdería su audio/texto).
+    private func isProtectedFromTrim(_ it: ClipboardItem) -> Bool {
+        it.pinned || (it.isVoiceNote == true && it.preview == Self.voiceTranscribing)
     }
 
     private func trimAndSave() {
         if items.count > maxItems {
-            // Nunca borrar elementos fijados: conservar todos + los no-fijados más recientes.
-            let pinned = items.filter { $0.pinned }
-            var unpinned = items.filter { !$0.pinned }
-            let allowed = max(0, maxItems - pinned.count)
-            if unpinned.count > allowed {
-                for it in unpinned[allowed...] where it.kind == .image {
-                    if let f = it.imageFileName { storage.deleteImage(fileName: f) }
+            let keep = items.filter { isProtectedFromTrim($0) }
+            var trimmable = items.filter { !isProtectedFromTrim($0) }
+            let allowed = max(0, maxItems - keep.count)
+            if trimmable.count > allowed {
+                for it in trimmable[allowed...] {
+                    if it.kind == .image, let f = it.imageFileName { storage.deleteImage(fileName: f) }
+                    if let af = it.audioFileName { AudioPlayer.shared.stopIfPlaying(af); storage.deleteAudio(fileName: af) }
                 }
-                unpinned = Array(unpinned.prefix(allowed))
+                trimmable = Array(trimmable.prefix(allowed))
             }
-            items = (pinned + unpinned).sorted { $0.createdAt > $1.createdAt }
+            items = (keep + trimmable).sorted { $0.createdAt > $1.createdAt }
         }
         storage.saveItems(items)
     }
@@ -153,14 +220,13 @@ final class ClipboardManager: ObservableObject {
 
     func copyToPasteboard(_ item: ClipboardItem) {
         let pb = NSPasteboard.general
-        pb.clearContents()
         switch item.kind {
         case .text:
-            if let t = item.text { pb.setString(t, forType: .string) }
+            guard let t = item.text, !t.isEmpty else { return }   // nota de voz sin texto: no tocar el portapapeles
+            pb.clearContents(); pb.setString(t, forType: .string)
         case .image:
-            if let f = item.imageFileName, let img = storage.loadImage(fileName: f) {
-                pb.writeObjects([img])
-            }
+            guard let f = item.imageFileName, let img = storage.loadImage(fileName: f) else { return }
+            pb.clearContents(); pb.writeObjects([img])
         }
         lastChangeCount = pb.changeCount
     }
@@ -181,13 +247,16 @@ final class ClipboardManager: ObservableObject {
 
     func delete(_ item: ClipboardItem) {
         if item.kind == .image, let f = item.imageFileName { storage.deleteImage(fileName: f) }
+        if let af = item.audioFileName { AudioPlayer.shared.stopIfPlaying(af); storage.deleteAudio(fileName: af) }
         items.removeAll { $0.id == item.id }
         storage.saveItems(items)
     }
 
     func clearAll() {
-        for it in items where it.kind == .image {
-            if let f = it.imageFileName { storage.deleteImage(fileName: f) }
+        AudioPlayer.shared.stop()
+        for it in items {
+            if it.kind == .image, let f = it.imageFileName { storage.deleteImage(fileName: f) }
+            if let af = it.audioFileName { storage.deleteAudio(fileName: af) }
         }
         items.removeAll()
         storage.saveItems(items)

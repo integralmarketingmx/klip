@@ -114,7 +114,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let icon = it.isVoiceNote == true ? "🎙 " : (it.kind == .image ? "🖼 " : (it.isCredential == true ? "🔑 " : ""))
             let body: String
             if it.isCredential == true { body = CredentialDetector.masked(it.text ?? "") }
-            else if it.isVoiceNote == true { body = String((it.text ?? "").prefix(45)) }  // evita doble 🎙
+            else if it.isVoiceNote == true {
+                // texto transcrito (evita doble 🎙); si aún no hay, usar el preview sin el emoji.
+                let tx = (it.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                body = tx.isEmpty ? String(it.preview.drop(while: { $0 == "🎙" || $0 == " " }).prefix(45))
+                                  : String(tx.prefix(45))
+            }
             else { body = String(it.preview.prefix(45)) }
             let mi = NSMenuItem(title: "\(Self.recentsDF.string(from: it.createdAt))   \(icon)\(body)",
                                 action: #selector(pasteRecent(_:)), keyEquivalent: "")
@@ -127,6 +132,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func pasteRecent(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? UUID,
               let item = manager.items.first(where: { $0.id == id }) else { return }
+        // Nota de voz sin transcripción: no hay texto que copiar → reproducir su audio.
+        if item.kind == .text, (item.text?.isEmpty ?? true) {
+            if let af = item.audioFileName { AudioPlayer.shared.toggle(fileName: af) }
+            return
+        }
         manager.copyToPasteboard(item)   // queda en el portapapeles, listo para pegar
     }
 

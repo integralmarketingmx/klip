@@ -236,6 +236,14 @@ struct ItemRow: View {
     @State private var revealed = false
 
     private var isCredential: Bool { item.isCredential == true }
+    private var hasText: Bool { !(item.text?.isEmpty ?? true) }
+
+    /// Audio reproducible de una nota de voz (solo si el archivo sigue en disco).
+    private var voiceAudioFile: String? {
+        guard item.isVoiceNote == true, let af = item.audioFileName,
+              Storage.shared.audioExists(fileName: af) else { return nil }
+        return af
+    }
 
     private var displayedPreview: String {
         if isCredential, !revealed, let t = item.text { return CredentialDetector.masked(t) }
@@ -307,9 +315,15 @@ struct ItemRow: View {
                 .frame(width: 46, height: 46).foregroundStyle(.yellow)
                 .background(RoundedRectangle(cornerRadius: 8).fill(Color.yellow.opacity(0.14)))
         } else if item.isVoiceNote == true {
-            Image(systemName: "waveform").font(.system(size: 20))
-                .frame(width: 46, height: 46).foregroundStyle(.purple)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.purple.opacity(0.12)))
+            // Sin texto (transcribiendo/fallida) + audio: botón ▶, coherente con el tap de la fila (reproduce).
+            // Con texto: ícono estático (el tap de la fila pega el texto; reproducir está en las acciones).
+            if !hasText, let af = voiceAudioFile {
+                VoicePlayButton(fileName: af, large: true)
+            } else {
+                Image(systemName: "waveform").font(.system(size: 20))
+                    .frame(width: 46, height: 46).foregroundStyle(.purple)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.purple.opacity(0.12)))
+            }
         } else {
             Image(systemName: "doc.text").font(.system(size: 18))
                 .frame(width: 46, height: 46).foregroundStyle(.secondary)
@@ -323,11 +337,23 @@ struct ItemRow: View {
 
     private var actions: some View {
         HStack(spacing: 4) {
-            iconButton("doc.on.doc", L10n.t("row.copy")) { onPick(item) }
-            if item.kind == .image {
+            if item.isVoiceNote == true {
+                if let af = voiceAudioFile {
+                    if hasText { VoicePlayButton(fileName: af, large: false) }
+                    iconButton("folder", L10n.t("voice.reveal")) {
+                        NSWorkspace.shared.activateFileViewerSelecting([Storage.shared.audioURL(for: af)])
+                    }
+                }
+                if hasText {
+                    iconButton("doc.on.doc", L10n.t("row.copy")) { onPick(item) }
+                    iconButton("doc.richtext", L10n.t("row.markdown")) { onCopyMarkdown(item) }
+                }
+            } else if item.kind == .image {
+                iconButton("doc.on.doc", L10n.t("row.copy")) { onPick(item) }
                 iconButton("square.and.arrow.down", L10n.t("row.save")) { onSaveImage(item) }
                 iconButton("text.viewfinder", L10n.t("row.ocr")) { onOCR() }
             } else {
+                iconButton("doc.on.doc", L10n.t("row.copy")) { onPick(item) }
                 iconButton("doc.richtext", L10n.t("row.markdown")) { onCopyMarkdown(item) }
                 if isCredential {
                     iconButton(revealed ? "eye.slash" : "eye", L10n.t("row.reveal")) { revealed.toggle() }
@@ -354,5 +380,33 @@ struct ItemRow: View {
         else if cal.isDateInYesterday(date) { f.dateFormat = "'·' HH:mm" }
         else { f.dateFormat = "d MMM HH:mm" }
         return f.string(from: date)
+    }
+}
+
+/// Botón ▶/⏹ de una nota de voz. Es la ÚNICA vista que observa AudioPlayer.shared, así un play/stop
+/// solo recalcula este botón (no todas las filas de la lista).
+struct VoicePlayButton: View {
+    let fileName: String
+    var large: Bool = false
+    @ObservedObject private var audio = AudioPlayer.shared
+
+    var body: some View {
+        let icon = audio.isPlaying(fileName) ? "stop.fill" : "play.fill"
+        Group {
+            if large {
+                Button { AudioPlayer.shared.toggle(fileName: fileName) } label: {
+                    Image(systemName: icon).font(.system(size: 18))
+                        .frame(width: 46, height: 46).foregroundStyle(.purple)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.purple.opacity(0.12)))
+                }
+                .buttonStyle(.plain)
+            } else {
+                Button { AudioPlayer.shared.toggle(fileName: fileName) } label: {
+                    Image(systemName: icon).font(.system(size: 12))
+                }
+                .buttonStyle(.borderless)
+            }
+        }
+        .help(L10n.t("voice.play"))
     }
 }

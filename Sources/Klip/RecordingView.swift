@@ -70,14 +70,15 @@ struct RecordingView: View {
                     Text("Transcripción lista").font(.headline)
                 }
                 ScrollView {
-                    Text(text.isEmpty ? "(no se detectó voz)" : text)
+                    Text(text)
                         .font(.system(size: 13)).textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .frame(maxHeight: 150)
                 .padding(8)
                 .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.05)))
-                Text("Guardada en el historial.").font(.caption).foregroundStyle(.secondary)
+                Label("Nota y audio guardados en el historial.", systemImage: "waveform")
+                    .font(.caption).foregroundStyle(.secondary)
                 HStack {
                     Button("Cerrar") { recorder.reset() }
                     Spacer()

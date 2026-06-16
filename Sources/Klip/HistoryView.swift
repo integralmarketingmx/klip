@@ -72,11 +72,9 @@ struct HistoryView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            filterRow
+            if !manager.items.isEmpty { filterRow }
             Divider()
             if filtered.isEmpty { emptyState } else { list }
-            Divider()
-            footer
         }
         .frame(minWidth: 420, minHeight: 460)
         .background(Color.clear)
@@ -97,13 +95,25 @@ struct HistoryView: View {
     // MARK: - Encabezado
 
     private var header: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 8) {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
                 if let logo = Self.appLogo {
                     Image(nsImage: logo).resizable().frame(width: 22, height: 22)
                 }
                 Text("Klip").font(.system(size: 15, weight: .semibold))
                 Spacer()
+                Button { onVoiceRecord() } label: {
+                    Image(systemName: recorder.state == .recording ? "mic.fill" : "mic")
+                        .foregroundStyle(recorder.state == .recording ? .red : .primary)
+                }
+                .buttonStyle(.borderless).help(L10n.t("rec.record"))
+                Menu {
+                    Button { onUploadAudio() } label: { Label(L10n.t("act.upload"), systemImage: "waveform.badge.plus") }
+                    Button { onCopyAllMarkdown() } label: { Label(L10n.t("act.copyallmd"), systemImage: "doc.richtext") }
+                    Divider()
+                    Button { onShowGuide() } label: { Label(L10n.t("act.guide"), systemImage: "questionmark.circle") }
+                } label: { Image(systemName: "ellipsis.circle") }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help(L10n.t("act.more"))
                 Button { onOpenPreferences() } label: { Image(systemName: "gearshape") }
                     .buttonStyle(.borderless).help(L10n.t("act.prefs"))
             }
@@ -119,36 +129,8 @@ struct HistoryView: View {
                         .background(Capsule().fill(Color.primary.opacity(0.08)))
                 }
             }
-            HStack(spacing: 8) {
-                micChip
-                actionChip("waveform.badge.plus", L10n.t("act.upload")) { onUploadAudio() }
-                actionChip("doc.richtext", L10n.t("act.copyallmd")) { onCopyAllMarkdown() }
-                Spacer()
-            }
         }
         .padding(12)
-    }
-
-    @ViewBuilder private var micChip: some View {
-        switch recorder.state {
-        case .recording:
-            actionChip("stop.fill", "Detener", tint: .red) { onVoiceRecord() }
-        case .transcribing:
-            HStack(spacing: 4) { ProgressView().controlSize(.small); Text(L10n.t("rec.transcribing")).font(.system(size: 11)) }
-                .padding(.horizontal, 9).padding(.vertical, 5)
-        default:
-            actionChip("mic", L10n.t("rec.record")) { onVoiceRecord() }
-        }
-    }
-
-    private func actionChip(_ icon: String, _ label: String, tint: Color? = nil, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 4) { Image(systemName: icon); Text(label).font(.system(size: 11)) }
-                .padding(.horizontal, 9).padding(.vertical, 5)
-                .background(Capsule().fill((tint ?? Color.primary).opacity(tint == nil ? 0.08 : 0.16)))
-                .foregroundStyle(tint ?? .primary)
-        }
-        .buttonStyle(.plain)
     }
 
     private var filterRow: some View {
@@ -195,17 +177,6 @@ struct HistoryView: View {
                 withAnimation(.easeInOut(duration: 0.12)) { proxy.scrollTo(newID, anchor: .center) }
             }
         }
-    }
-
-    private var footer: some View {
-        HStack {
-            Button { onShowGuide() } label: {
-                HStack(spacing: 4) { Image(systemName: "questionmark.circle"); Text(L10n.t("act.guide")).font(.system(size: 11)) }
-            }
-            .buttonStyle(.plain).foregroundStyle(.secondary)
-            Spacer()
-        }
-        .padding(.horizontal, 12).padding(.vertical, 6)
     }
 
     private var emptyState: some View {

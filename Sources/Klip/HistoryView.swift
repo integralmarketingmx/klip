@@ -488,13 +488,29 @@ struct ItemRow: View {
             .buttonStyle(.borderless).help(help)
     }
 
+    /// Etiqueta de fecha legible: "Hoy · 10:43", "Ayer · 10:43" o "martes 04 de julio · 10:43".
     static func timeLabel(_ date: Date) -> String {
         let cal = Calendar.current
-        let f = DateFormatter(); f.locale = Locale(identifier: Settings.shared.uiLanguage == "en" ? "en" : "es")
-        if cal.isDateInToday(date) { f.dateFormat = "HH:mm" }
-        else if cal.isDateInYesterday(date) { f.dateFormat = "'·' HH:mm" }
-        else { f.dateFormat = "d MMM HH:mm" }
-        return f.string(from: date)
+        let en = Settings.shared.uiLanguage == "en"
+        let time = df(en ? "h:mm a" : "HH:mm", en).string(from: date)
+        if cal.isDateInToday(date)     { return "\(L10n.t("date.today")) · \(time)" }
+        if cal.isDateInYesterday(date) { return "\(L10n.t("date.yesterday")) · \(time)" }
+        let sameYear = cal.component(.year, from: date) == cal.component(.year, from: Date())
+        let fmt = en ? (sameYear ? "EEEE, MMM d" : "EEEE, MMM d, yyyy")
+                     : (sameYear ? "EEEE dd 'de' MMMM" : "EEEE dd 'de' MMMM yyyy")
+        return "\(df(fmt, en).string(from: date)) · \(time)"
+    }
+
+    /// DateFormatters cacheados por (idioma, formato) — evita recrearlos en cada render.
+    private static var dfCache: [String: DateFormatter] = [:]
+    private static func df(_ format: String, _ en: Bool) -> DateFormatter {
+        let cacheKey = "\(en ? "en" : "es")|\(format)"
+        if let f = dfCache[cacheKey] { return f }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: en ? "en_US" : "es_ES")
+        f.dateFormat = format
+        dfCache[cacheKey] = f
+        return f
     }
 }
 

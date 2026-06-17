@@ -1,6 +1,7 @@
 import AppKit
 import Carbon.HIToolbox
 import Combine
+import UniformTypeIdentifiers
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
@@ -55,6 +56,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(withTitle: L10n.t("act.guide"), action: #selector(showGuideMenu), keyEquivalent: "")
         menu.addItem(.separator())
+        menu.addItem(withTitle: L10n.t("menu.export"), action: #selector(exportBackup), keyEquivalent: "")
+        menu.addItem(withTitle: L10n.t("menu.import"), action: #selector(importBackup), keyEquivalent: "")
         menu.addItem(withTitle: L10n.t("menu.clear"), action: #selector(clearAll), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: L10n.t("menu.quit"), action: #selector(quit), keyEquivalent: "q")
@@ -191,4 +194,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if alert.runModal() == .alertFirstButtonReturn { manager.clearAll() }
     }
     @objc private func quit() { NSApp.terminate(nil) }
+
+    @objc private func exportBackup() {
+        let sp = NSSavePanel()
+        sp.allowedContentTypes = [.zip]
+        sp.nameFieldStringValue = "Klip-backup.zip"
+        sp.canCreateDirectories = true
+        NSApp.activate(ignoringOtherApps: true)
+        sp.begin { [weak self] resp in
+            guard resp == .OK, let url = sp.url else { return }
+            do { try Storage.shared.exportBackup(to: url) }
+            catch { self?.showAlert(L10n.t("export.fail"), error.localizedDescription) }
+        }
+    }
+
+    @objc private func importBackup() {
+        let op = NSOpenPanel()
+        op.allowedContentTypes = [.zip]
+        op.allowsMultipleSelection = false
+        op.canChooseDirectories = false
+        NSApp.activate(ignoringOtherApps: true)
+        op.begin { [weak self] resp in
+            guard let self, resp == .OK, let url = op.url else { return }
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = L10n.t("import.title")
+            alert.informativeText = L10n.t("import.info")
+            let ok = alert.addButton(withTitle: L10n.t("import.confirm")); ok.hasDestructiveAction = true
+            let cancel = alert.addButton(withTitle: L10n.t("common.cancel")); cancel.keyEquivalent = "\u{1b}"
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            do {
+                let items = try Storage.shared.importBackup(from: url)
+                self.manager.reload(items)
+            } catch { self.showAlert(L10n.t("import.fail"), error.localizedDescription) }
+        }
+    }
+
+    private func showAlert(_ title: String, _ info: String) {
+        let a = NSAlert(); a.messageText = title; a.informativeText = info
+        a.addButton(withTitle: "OK"); a.runModal()
+    }
 }

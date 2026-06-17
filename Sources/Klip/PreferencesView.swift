@@ -142,7 +142,7 @@ struct PreferencesView: View {
                         ForEach(models, id: \.self) { Text($0).tag($0) }
                     }
                 } else {
-                    LabeledContent("Modelo", value: "gemini-2.0-flash")
+                    LabeledContent("Modelo", value: "gemini-flash-latest")
                 }
                 Picker("Idioma del audio", selection: $settings.transcriptionLanguage) {
                     ForEach(languages.sorted(by: { $0.value < $1.value }), id: \.key) { Text($1).tag($0) }

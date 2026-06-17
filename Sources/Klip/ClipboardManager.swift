@@ -258,6 +258,12 @@ final class ClipboardManager: ObservableObject {
         storage.saveItems(items)
     }
 
+    /// Reemplaza el historial en memoria tras importar una copia de seguridad.
+    func reload(_ newItems: [ClipboardItem]) {
+        AudioPlayer.shared.stop()
+        items = newItems
+    }
+
     func clearAll() {
         AudioPlayer.shared.stop()
         for it in items {

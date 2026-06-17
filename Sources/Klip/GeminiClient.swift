@@ -5,7 +5,7 @@ import Foundation
 final class GeminiClient {
     static let shared = GeminiClient()
     private let session: URLSession
-    private let model = "gemini-2.0-flash"
+    private let model = "gemini-flash-latest"   // alias siempre al último flash (evita 404 por deprecación)
     init(session: URLSession = .shared) { self.session = session }
 
     var hasAPIKey: Bool {

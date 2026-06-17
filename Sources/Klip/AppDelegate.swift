@@ -203,8 +203,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.activate(ignoringOtherApps: true)
         sp.begin { [weak self] resp in
             guard resp == .OK, let url = sp.url else { return }
-            do { try Storage.shared.exportBackup(to: url) }
-            catch { self?.showAlert(L10n.t("export.fail"), error.localizedDescription) }
+            DispatchQueue.global(qos: .userInitiated).async {   // ditto + copia pesada: fuera de main
+                do { try Storage.shared.exportBackup(to: url) }
+                catch { DispatchQueue.main.async { self?.showAlert(L10n.t("export.fail"), error.localizedDescription) } }
+            }
         }
     }
 
@@ -223,10 +225,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let ok = alert.addButton(withTitle: L10n.t("import.confirm")); ok.hasDestructiveAction = true
             let cancel = alert.addButton(withTitle: L10n.t("common.cancel")); cancel.keyEquivalent = "\u{1b}"
             guard alert.runModal() == .alertFirstButtonReturn else { return }
-            do {
-                let items = try Storage.shared.importBackup(from: url)
-                self.manager.reload(items)
-            } catch { self.showAlert(L10n.t("import.fail"), error.localizedDescription) }
+            DispatchQueue.global(qos: .userInitiated).async {   // ditto + copia pesada: fuera de main
+                do {
+                    let items = try Storage.shared.importBackup(from: url)
+                    DispatchQueue.main.async { self.manager.reload(items) }
+                } catch {
+                    DispatchQueue.main.async { self.showAlert(L10n.t("import.fail"), error.localizedDescription) }
+                }
+            }
         }
     }
 

@@ -161,7 +161,10 @@ final class Storage {
         try Self.runDitto(["-c", "-k", "--keepParent", stage.path, dest.path])
     }
 
-    /// Importa una copia .zip y REEMPLAZA el historial actual. Devuelve los elementos cargados.
+    /// Importa una copia .zip y REEMPLAZA el historial actual, de forma **transaccional**:
+    /// valida el backup, mueve lo actual a `.importbak`, copia lo nuevo y, ante CUALQUIER fallo,
+    /// restaura desde el respaldo → nunca se pierde el historial existente. Devuelve los elementos.
+    /// (Pesado: ejecútalo fuera del hilo principal.)
     func importBackup(from src: URL) throws -> [ClipboardItem] {
         let fm = FileManager.default
         let tmp = fm.temporaryDirectory.appendingPathComponent("KlipImport-\(UUID().uuidString)", isDirectory: true)
@@ -170,26 +173,58 @@ final class Storage {
         try Self.runDitto(["-x", "-k", src.path, tmp.path])
 
         guard let root = Self.findBackupRoot(in: tmp) else {
-            throw NSError(domain: "Klip", code: 1,
-                          userInfo: [NSLocalizedDescriptionKey: "El archivo no es una copia de seguridad de Klip (falta items.json)."])
+            throw Self.err("El archivo no es una copia de seguridad de Klip (falta items.json).")
         }
-        // Reemplazar items.json
-        try? fm.removeItem(at: itemsURL)
-        try fm.copyItem(at: root.appendingPathComponent("items.json"), to: itemsURL)
+        // Validar que el items.json del backup decodifica ANTES de tocar nada (no importar basura).
+        let newItemsFile = root.appendingPathComponent("items.json")
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        guard let data = try? Data(contentsOf: newItemsFile),
+              let decoded = try? decoder.decode([ClipboardItem].self, from: data) else {
+            throw Self.err("La copia de seguridad está dañada (items.json ilegible).")
+        }
+
+        let newImages = root.appendingPathComponent("images")
+        let newAudio = root.appendingPathComponent("audio")
+        let bakItems = baseURL.appendingPathComponent("items.json.importbak")
+        let bakImages = baseURL.appendingPathComponent("images.importbak")
+        let bakAudio = baseURL.appendingPathComponent("audio.importbak")
+        [bakItems, bakImages, bakAudio].forEach { try? fm.removeItem(at: $0) }   // restos de un intento previo
+
+        // Restaura un destino desde su respaldo (solo si el respaldo existe → original a salvo).
+        func restore(_ live: URL, _ bak: URL) {
+            guard fm.fileExists(atPath: bak.path) else { return }   // sin bak: el live es el original intacto
+            try? fm.removeItem(at: live)
+            try? fm.moveItem(at: bak, to: live)
+        }
+
+        do {
+            // Mover lo actual a .bak (renames atómicos en el mismo volumen).
+            if fm.fileExists(atPath: itemsURL.path)     { try fm.moveItem(at: itemsURL, to: bakItems) }
+            if fm.fileExists(atPath: imagesURL.path)    { try fm.moveItem(at: imagesURL, to: bakImages) }
+            if fm.fileExists(atPath: audioBaseURL.path) { try fm.moveItem(at: audioBaseURL, to: bakAudio) }
+            // Colocar lo nuevo.
+            try fm.copyItem(at: newItemsFile, to: itemsURL)
+            if fm.fileExists(atPath: newImages.path) { try fm.copyItem(at: newImages, to: imagesURL) }
+            else { try fm.createDirectory(at: imagesURL, withIntermediateDirectories: true) }
+            if fm.fileExists(atPath: newAudio.path) { try fm.copyItem(at: newAudio, to: audioBaseURL) }
+            else { try fm.createDirectory(at: audioBaseURL, withIntermediateDirectories: true) }
+        } catch {
+            restore(itemsURL, bakItems)        // rollback: deja el historial como estaba
+            restore(imagesURL, bakImages)
+            restore(audioBaseURL, bakAudio)
+            throw error
+        }
+
+        [bakItems, bakImages, bakAudio].forEach { try? fm.removeItem(at: $0) }   // éxito: limpiar respaldos
         Self.restrict(itemsURL.path, 0o600)
-        // Reemplazar carpetas de medios
-        replaceDir(imagesURL, from: root.appendingPathComponent("images"))
-        replaceDir(audioBaseURL, from: root.appendingPathComponent("audio"))
+        Self.restrict(imagesURL.path, 0o700)
+        Self.restrict(audioBaseURL.path, 0o700)
         imageCache.removeAllObjects()
-        return loadItems()
+        return decoded
     }
 
-    private func replaceDir(_ target: URL, from source: URL) {
-        let fm = FileManager.default
-        try? fm.removeItem(at: target)
-        if fm.fileExists(atPath: source.path) { try? fm.copyItem(at: source, to: target) }
-        else { try? fm.createDirectory(at: target, withIntermediateDirectories: true) }
-        Self.restrict(target.path, 0o700)
+    private static func err(_ msg: String) -> NSError {
+        NSError(domain: "Klip", code: 1, userInfo: [NSLocalizedDescriptionKey: msg])
     }
 
     /// Localiza la carpeta del backup que contiene items.json (keepParent → .../Klip/items.json).

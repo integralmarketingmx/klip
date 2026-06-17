@@ -8,6 +8,10 @@ Historial de texto e imágenes · búsqueda instantánea · **notas de voz → t
 
 🆓 Gratis y open source (MIT) · 🔒 Sin telemetría · 🍎 Swift nativo (sin Electron)
 
+<br/>
+
+<img src="docs/klip-preview.png" alt="Vista previa del panel de Klip: historial con credencial, nota de voz, imagen y enlace" width="470"/>
+
 </div>
 
 > ### 🖥️ Por ahora, solo para Mac

@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 474" width="520" height="474" font-family="-apple-system, 'SF Pro Text', 'Helvetica Neue', Arial, sans-serif">
+  <title>Klip — vista previa del panel</title>
+  <rect x="20" y="20" width="480" height="442" rx="16" fill="#000000" opacity="0.06"/>
+  <rect x="20" y="14" width="480" height="446" rx="16" fill="#F4F4F6" stroke="#D7D7DC" stroke-width="1"/>
+
+  <g transform="translate(36,30)">
+    <rect x="0" y="0" width="24" height="24" rx="6" fill="#0A84FF"/>
+    <rect x="8" y="2.5" width="8" height="4" rx="1.4" fill="#ffffff"/>
+    <rect x="5.5" y="5" width="13" height="15" rx="2" fill="#ffffff"/>
+    <rect x="8" y="9" width="8" height="1.6" rx="0.8" fill="#9cc7ff"/>
+    <rect x="8" y="12.5" width="8" height="1.6" rx="0.8" fill="#9cc7ff"/>
+  </g>
+  <text x="70" y="48" font-size="16" font-weight="600" fill="#1D1D1F">Klip</text>
+
+  <g stroke="#6E6E73" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <g transform="translate(390,33)">
+      <rect x="2.5" y="0" width="7" height="11" rx="3.5"/>
+      <path d="M0 7 a6 6 0 0 0 12 0"/>
+      <path d="M6 13 v3 M3 16 h6"/>
+    </g>
+    <g transform="translate(416,33)">
+      <path d="M6 14 V2 M2 6 l4 -4 4 4"/>
+      <path d="M0.5 15.5 h11"/>
+    </g>
+    <g transform="translate(442,40) " stroke="none" fill="#6E6E73">
+      <circle cx="0" cy="0" r="1.7"/><circle cx="6" cy="0" r="1.7"/><circle cx="12" cy="0" r="1.7"/>
+    </g>
+    <g transform="translate(468,40)">
+      <circle cx="6" cy="0" r="6"/><circle cx="6" cy="0" r="2.4"/>
+      <path d="M6 -9 v3 M6 6 v3 M-3 0 h3 M9 0 h3 M-0.4 -6.4 l2.1 2.1 M10.3 4.3 l1.5 1.5 M12.4 -6.4 l-2.1 2.1 M1.7 4.3 l-1.5 1.5"/>
+    </g>
+  </g>
+
+  <g transform="translate(36,72)">
+    <circle cx="6" cy="8" r="4.5" fill="none" stroke="#9A9AA0" stroke-width="1.6"/>
+    <path d="M9.5 11.5 L13 15" stroke="#9A9AA0" stroke-width="1.6" stroke-linecap="round"/>
+    <text x="24" y="12" font-size="13" fill="#9A9AA0">Buscar…</text>
+    <rect x="416" y="0" width="32" height="18" rx="9" fill="#E4E4E8"/>
+    <text x="432" y="13" font-size="11" fill="#6E6E73" text-anchor="middle">167</text>
+  </g>
+
+  <g transform="translate(36,106)" font-size="11">
+    <rect x="0" y="0" width="48" height="22" rx="11" fill="#D6E7FF"/>
+    <text x="24" y="15" fill="#0A5BD0" text-anchor="middle" font-weight="600">Todo</text>
+    <rect x="54" y="0" width="50" height="22" rx="11" fill="#EAEAEE"/>
+    <text x="79" y="15" fill="#5F5F66" text-anchor="middle">Texto</text>
+    <rect x="110" y="0" width="74" height="22" rx="11" fill="#EAEAEE"/>
+    <text x="147" y="15" fill="#5F5F66" text-anchor="middle">Imágenes</text>
+    <rect x="190" y="0" width="44" height="22" rx="11" fill="#EAEAEE"/>
+    <text x="212" y="15" fill="#5F5F66" text-anchor="middle">Voz</text>
+    <rect x="240" y="0" width="96" height="22" rx="11" fill="#EAEAEE"/>
+    <text x="288" y="15" fill="#5F5F66" text-anchor="middle">Credenciales</text>
+    <rect x="342" y="0" width="64" height="22" rx="11" fill="#EAEAEE"/>
+    <text x="374" y="15" fill="#5F5F66" text-anchor="middle">Fijados</text>
+  </g>
+
+  <line x1="20" y1="142" x2="500" y2="142" stroke="#E0E0E5" stroke-width="1"/>
+
+  <rect x="30" y="150" width="460" height="62" rx="10" fill="#0A84FF" opacity="0.12"/>
+  <rect x="30" y="150" width="460" height="62" rx="10" fill="none" stroke="#0A84FF" stroke-opacity="0.55" stroke-width="1"/>
+  <g transform="translate(42,160)">
+    <rect x="0" y="0" width="44" height="44" rx="9" fill="#FBF0C8"/>
+    <g transform="translate(15,11)" fill="none" stroke="#C48F00" stroke-width="2.2" stroke-linecap="round">
+      <circle cx="7" cy="5" r="4"/>
+      <path d="M7 9 V20 M7 14 h4 M7 17 h3"/>
+    </g>
+  </g>
+  <text x="98" y="180" font-size="13" font-weight="600" fill="#1D1D1F">Token Stripe producción</text>
+  <text x="98" y="197" font-size="12" font-family="ui-monospace, Menlo, monospace" fill="#6E6E73">••••4613</text>
+  <text x="98" y="206" font-size="10" fill="#9A9AA0" dy="-1"> </text>
+  <text x="98" y="207" font-size="10" fill="#9A9AA0">Hoy · 10:43</text>
+  <g transform="translate(466,176)" fill="none" stroke="#E0B000" stroke-width="1.7" stroke-linecap="round">
+    <circle cx="4" cy="4" r="3"/><path d="M4 7 V15 M4 11 h3 M4 13 h2.4"/>
+  </g>
+
+  <g transform="translate(42,224)">
+    <rect x="0" y="0" width="44" height="44" rx="9" fill="#EFE7FB"/>
+    <path d="M17 13 L31 22 L17 31 Z" fill="#7C54D4"/>
+  </g>
+  <text x="98" y="240" font-size="13" fill="#1D1D1F">Entiendo, Martín, pero hay que tratar de ver por qué se…</text>
+  <text x="98" y="259" font-size="10" fill="#9A9AA0">martes 04 de julio · 0:05 / 0:14</text>
+  <rect x="250" y="253" width="54" height="4" rx="2" fill="#D9D4EA"/>
+  <rect x="250" y="253" width="20" height="4" rx="2" fill="#7C54D4"/>
+
+  <g transform="translate(42,288)">
+    <rect x="0" y="0" width="446" height="68" rx="9" fill="#CFE3F5"/>
+    <circle cx="360" cy="20" r="13" fill="#F6D88A"/>
+    <path d="M0 68 L120 30 L210 56 L320 22 L446 50 L446 68 Z" fill="#9BC2E0"/>
+    <path d="M0 68 L90 46 L180 60 L300 40 L446 60 L446 68 Z" fill="#7FB0D6"/>
+    <rect x="384" y="46" width="56" height="15" rx="7" fill="#000000" opacity="0.5"/>
+    <text x="412" y="57" font-size="9" fill="#ffffff" text-anchor="middle" font-family="ui-monospace, Menlo, monospace">1920×1080</text>
+  </g>
+  <text x="42" y="372" font-size="10" fill="#9A9AA0">Imagen · 1920×1080 · Ayer · 15:20</text>
+
+  <g transform="translate(42,386)">
+    <rect x="0" y="0" width="44" height="44" rx="9" fill="#ECECEF"/>
+    <g transform="translate(12,14)" fill="none" stroke="#6E6E73" stroke-width="2" stroke-linecap="round">
+      <path d="M3 9 a4 4 0 0 1 0 -6 l3 -3 a4 4 0 0 1 6 6 l-1 1"/>
+      <path d="M17 7 a4 4 0 0 1 0 6 l-3 3 a4 4 0 0 1 -6 -6 l1 -1"/>
+    </g>
+  </g>
+  <rect x="255" y="398" width="27" height="16" rx="3" fill="#FCE49A"/>
+  <text x="98" y="410" font-size="12.5" fill="#1D6FD0">https://github.com/tamibot/klip</text>
+  <text x="98" y="428" font-size="10" fill="#9A9AA0">Hoy · 09:12</text>
+  <g transform="translate(464,398)" fill="none" stroke="#6E6E73" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="0" y="3" width="12" height="12" rx="2.5"/>
+    <path d="M6 9 L13 2 M9 2 h4 v4"/>
+  </g>
+</svg>

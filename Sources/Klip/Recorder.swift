@@ -2,6 +2,7 @@ import Foundation
 import AVFoundation
 import AppKit
 import Combine
+import CoreAudio
 
 enum RecorderState: Equatable {
     case idle
@@ -41,6 +42,8 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     private var meterTimer: Timer?
     private var currentFileName: String?
     private let storage = Storage.shared
+    /// Listener de CoreAudio para detectar cambios del micrófono por defecto (p. ej. conectar audífonos).
+    private var deviceListener: AudioObjectPropertyListenerBlock?
 
     /// Intención de grabar pendiente (cubre la ventana del permiso async).
     private var startRequested = false
@@ -93,6 +96,7 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 state = .recording
                 startRequested = false
                 startMeterTimer()
+                installDeviceListener()
             } catch {
                 state = .error(error.localizedDescription); startRequested = false
             }
@@ -105,6 +109,7 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         guard state == .recording, !finishing, let rec = recorder else { return }   // ignora doble-stop
         finishing = true
         stopMeterTimer()
+        removeDeviceListener()
         rec.stop()   // dispara audioRecorderDidFinishRecording
     }
 
@@ -113,12 +118,49 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         startRequested = false
         finishing = false
         stopMeterTimer()
+        removeDeviceListener()
         recorder?.delegate = nil   // evita que el delegate sobrescriba .idle con .error
         recorder?.stop()
         recorder = nil
         if let f = currentFileName { storage.deleteAudio(fileName: f) }
         currentFileName = nil
         state = .idle
+    }
+
+    // MARK: - Cambio de dispositivo de entrada (audífonos)
+
+    /// Observa el micrófono por defecto. Si cambia DURANTE la grabación (p. ej. conectas audífonos),
+    /// AVAudioRecorder se queda en el dispositivo viejo y el medidor se congela → finalizamos la nota
+    /// de forma limpia (se guarda y transcribe lo grabado) en vez de dejar un estado roto.
+    private func installDeviceListener() {
+        guard deviceListener == nil else { return }
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.handleInputDeviceChange() } }
+        }
+        let status = AudioObjectAddPropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject), &addr, DispatchQueue.main, block)
+        if status == noErr { deviceListener = block }
+    }
+
+    private func removeDeviceListener() {
+        guard let block = deviceListener else { return }
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        AudioObjectRemovePropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject), &addr, DispatchQueue.main, block)
+        deviceListener = nil
+    }
+
+    @MainActor
+    private func handleInputDeviceChange() {
+        guard state == .recording, !finishing else { return }
+        stop()   // finaliza y transcribe lo grabado hasta el cambio de dispositivo
     }
 
     /// Vuelve a .idle desde estados terminales (error o sin API key) para revalidar al reabrir.

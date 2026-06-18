@@ -103,34 +103,40 @@ struct HistoryView: View {
 
     private var header: some View {
         VStack(spacing: 10) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 if let logo = Self.appLogo {
                     Image(nsImage: logo).resizable().frame(width: 22, height: 22)
                 }
                 Text("Klip").font(.system(size: 15, weight: .semibold))
-                Spacer()
+                Spacer(minLength: 8)
                 if recorder.transcribingCount > 0 {
                     HStack(spacing: 4) {
                         ProgressView().controlSize(.small)
                         Text("\(recorder.transcribingCount)").font(.system(size: 11)).foregroundStyle(.secondary)
                     }
                     .help(L10n.t("rec.transcribing"))
+                    .padding(.trailing, 2)
                 }
-                Button { onVoiceRecord() } label: {
-                    Image(systemName: recorder.state == .recording ? "mic.fill" : "mic")
-                        .foregroundStyle(recorder.state == .recording ? .red : .primary)
+                // Iconos de acción: tamaño uniforme y separación holgada para que no se encimen.
+                HStack(spacing: 15) {
+                    Button { onVoiceRecord() } label: {
+                        Image(systemName: recorder.state == .recording ? "mic.fill" : "mic")
+                            .foregroundStyle(recorder.state == .recording ? .red : .primary)
+                    }
+                    .buttonStyle(.borderless).help(L10n.t("rec.record"))
+                    Button { onUploadAudio() } label: { Image(systemName: "waveform.badge.plus") }
+                        .buttonStyle(.borderless).help(L10n.t("act.upload"))
+                    Menu {
+                        Button { onCopyAllMarkdown() } label: { Label(L10n.t("act.copyallmd"), systemImage: "doc.richtext") }
+                        Divider()
+                        Button { onShowGuide() } label: { Label(L10n.t("act.guide"), systemImage: "questionmark.circle") }
+                    } label: { Image(systemName: "ellipsis.circle") }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help(L10n.t("act.more"))
+                    Button { onOpenPreferences() } label: { Image(systemName: "gearshape") }
+                        .buttonStyle(.borderless).help(L10n.t("act.prefs"))
                 }
-                .buttonStyle(.borderless).help(L10n.t("rec.record"))
-                Button { onUploadAudio() } label: { Image(systemName: "waveform.badge.plus") }
-                    .buttonStyle(.borderless).help(L10n.t("act.upload"))
-                Menu {
-                    Button { onCopyAllMarkdown() } label: { Label(L10n.t("act.copyallmd"), systemImage: "doc.richtext") }
-                    Divider()
-                    Button { onShowGuide() } label: { Label(L10n.t("act.guide"), systemImage: "questionmark.circle") }
-                } label: { Image(systemName: "ellipsis.circle") }
-                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help(L10n.t("act.more"))
-                Button { onOpenPreferences() } label: { Image(systemName: "gearshape") }
-                    .buttonStyle(.borderless).help(L10n.t("act.prefs"))
+                .font(.system(size: 15))
+                .imageScale(.medium)
             }
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)

@@ -18,11 +18,29 @@ final class APIKeyModel: ObservableObject {
         last4 = SecretStore.last4(key)
     }
 
-    func save(_ raw: String) {
+    @discardableResult
+    func save(_ raw: String) -> Bool {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        SecretStore.set(trimmed, key); errorMessage = nil; savedOK = true
-        refresh()
+        guard !trimmed.isEmpty else {
+            errorMessage = "No se detectó ninguna clave. Pega el texto y vuelve a intentarlo."
+            savedOK = false
+            return false
+        }
+        do {
+            let ok = try SecretStore.set(trimmed, key)   // escribe y RELEE para confirmar
+            if ok {
+                errorMessage = nil; savedOK = true
+            } else {
+                errorMessage = "La clave no se pudo confirmar tras guardarla."; savedOK = false
+            }
+            refresh()
+            return ok
+        } catch {
+            errorMessage = "No se pudo guardar: \(error.localizedDescription)"
+            savedOK = false
+            refresh()
+            return false
+        }
     }
 
     func delete() {
@@ -156,13 +174,19 @@ struct PreferencesView: View {
             Section("OpenAI (clave para voz)") {
                 keyStatus(apiKey)
                 HStack {
-                    if showKey { TextField("sk-…", text: $draftKey).textFieldStyle(.roundedBorder) }
-                    else { SecureField("sk-…", text: $draftKey).textFieldStyle(.roundedBorder) }
+                    if showKey {
+                        TextField("sk-…", text: $draftKey).textFieldStyle(.roundedBorder)
+                            .onSubmit { saveOpenAI() }
+                    } else {
+                        SecureField("sk-…", text: $draftKey).textFieldStyle(.roundedBorder)
+                            .onSubmit { saveOpenAI() }
+                    }
                     Button { showKey.toggle() } label: { Image(systemName: showKey ? "eye.slash" : "eye") }
                         .buttonStyle(.borderless)
                 }
                 HStack {
-                    Button("Guardar") { apiKey.save(draftKey); draftKey = ""; showKey = false }
+                    Button("Guardar") { saveOpenAI() }
+                        .keyboardShortcut(.defaultAction)
                         .disabled(draftKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     Button("Borrar", role: .destructive) { apiKey.delete() }.disabled(!apiKey.isConfigured)
                     if apiKey.savedOK { Label("Guardada", systemImage: "checkmark.circle.fill").foregroundStyle(.green).font(.caption) }
@@ -173,13 +197,18 @@ struct PreferencesView: View {
             Section("Google Gemini (clave para voz)") {
                 keyStatus(geminiKey)
                 HStack {
-                    if showGeminiKey { TextField("AIza…", text: $draftGeminiKey).textFieldStyle(.roundedBorder) }
-                    else { SecureField("AIza…", text: $draftGeminiKey).textFieldStyle(.roundedBorder) }
+                    if showGeminiKey {
+                        TextField("AIza…", text: $draftGeminiKey).textFieldStyle(.roundedBorder)
+                            .onSubmit { saveGemini() }
+                    } else {
+                        SecureField("AIza…", text: $draftGeminiKey).textFieldStyle(.roundedBorder)
+                            .onSubmit { saveGemini() }
+                    }
                     Button { showGeminiKey.toggle() } label: { Image(systemName: showGeminiKey ? "eye.slash" : "eye") }
                         .buttonStyle(.borderless)
                 }
                 HStack {
-                    Button("Guardar") { geminiKey.save(draftGeminiKey); draftGeminiKey = ""; showGeminiKey = false }
+                    Button("Guardar") { saveGemini() }
                         .disabled(draftGeminiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     Button("Borrar", role: .destructive) { geminiKey.delete() }.disabled(!geminiKey.isConfigured)
                     if geminiKey.savedOK { Label("Guardada", systemImage: "checkmark.circle.fill").foregroundStyle(.green).font(.caption) }
@@ -211,6 +240,31 @@ struct PreferencesView: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    /// Fuerza al campo enfocado a confirmar su edición ANTES de leer el binding.
+    /// SwiftUI no siempre propaga el texto pegado a `draftKey` antes de que corra la acción del
+    /// botón (campo dentro de Form .grouped, sigue siendo first responder): al terminar la edición
+    /// del NSTextField, el valor en curso se vuelca al binding. Sin esto, `save` leía el valor viejo.
+    private func commitFocusedField() {
+        if let window = NSApp.keyWindow {
+            window.makeFirstResponder(nil)   // endEditing → vuelca el texto al binding
+        }
+    }
+
+    private func saveOpenAI() {
+        commitFocusedField()
+        // Tras volcar el binding en este ciclo de runloop, leer el valor ya actualizado.
+        DispatchQueue.main.async {
+            if apiKey.save(draftKey) { draftKey = ""; showKey = false }
+        }
+    }
+
+    private func saveGemini() {
+        commitFocusedField()
+        DispatchQueue.main.async {
+            if geminiKey.save(draftGeminiKey) { draftGeminiKey = ""; showGeminiKey = false }
+        }
     }
 
     @ViewBuilder

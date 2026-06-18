@@ -53,7 +53,7 @@ final class PanelController: NSObject, NSWindowDelegate {
             onSaveImage: { [weak self] item in self?.saveImage(item) },
             onCopyMarkdown: { [weak self] item in self?.copyMarkdown(of: item) },
             onCopyAllMarkdown: { [weak self] in self?.copyAllMarkdown() },
-            onOpenPreferences: { [weak self] in self?.onOpenPreferences?() },
+            onOpenPreferences: { [weak self] in self?.hide(restoreFocus: false); self?.onOpenPreferences?() },
             onUploadAudio: { [weak self] in self?.uploadAudio() },
             onVoiceRecord: { [weak self] in self?.toggleVoiceRecording() },
             onShowGuide: { [weak self] in self?.showGuide() },
@@ -275,6 +275,7 @@ final class PanelController: NSObject, NSWindowDelegate {
                                  styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
             p.isOpaque = false; p.backgroundColor = .clear; p.hasShadow = true
             p.level = .floating; p.isReleasedWhenClosed = false
+            p.isMovableByWindowBackground = true   // arrastrable desde el fondo (panel borderless sin barra de título)
             p.hidesOnDeactivate = false   // no ocultarse al volver el foco a la app del usuario
             let fx = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: 360, height: 320))
             fx.material = .hudWindow; fx.blendingMode = .behindWindow; fx.state = .active

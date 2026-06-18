@@ -168,12 +168,17 @@ final class ClipboardManager: ObservableObject {
             .trimmingCharacters(in: .whitespaces)
     }
 
+    /// changeCount del portapapeles al empezar cada nota: solo auto-pegamos su transcripción si el
+    /// usuario NO copió nada distinto mientras transcribía (no pisar su portapapeles en 2º plano).
+    private var voicePasteGuards: [UUID: Int] = [:]
+
     /// Crea el elemento de la nota de voz con su audio (placeholder "Transcribiendo…") y devuelve su id.
     @discardableResult
     func beginVoiceNote(audioFileName: String?, duration: Double?) -> UUID {
         let item = ClipboardItem(kind: .text, preview: Self.voiceTranscribing,
                                  isVoiceNote: true, audioFileName: audioFileName, audioDuration: duration)
         items.insert(item, at: 0)
+        voicePasteGuards[item.id] = NSPasteboard.general.changeCount
         trimAndSave()
         return item.id
     }
@@ -186,23 +191,26 @@ final class ClipboardManager: ObservableObject {
         storage.saveItems(items)
     }
 
-    /// Rellena la transcripción y la deja en el portapapeles, lista para pegar.
+    /// Rellena la transcripción. Solo la deja en el portapapeles si el usuario NO copió otra cosa
+    /// mientras transcribía (evita pisar su portapapeles en segundo plano).
     func finishVoiceNote(id: UUID, text: String) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let canPaste = voicePasteGuards.removeValue(forKey: id).map { $0 == NSPasteboard.general.changeCount } ?? false
         guard let idx = items.firstIndex(where: { $0.id == id }) else {
-            if !clean.isEmpty { setClipboardText(clean) }   // el placeholder ya no existe: al menos no perder el texto
+            if !clean.isEmpty, canPaste { setClipboardText(clean) }   // el placeholder ya no existe: no perder el texto
             return
         }
         items[idx].text = clean.isEmpty ? nil : clean
         items[idx].preview = clean.isEmpty ? Self.voiceFailed : Self.voicePreview(clean)
         let item = items[idx]
         trimAndSave()
-        if !clean.isEmpty { copyToPasteboard(item) }   // sin re-capturar (actualiza lastChangeCount)
+        if !clean.isEmpty, canPaste { copyToPasteboard(item) }   // solo si nada cambió el portapapeles
     }
 
     /// La transcripción falló: deja el elemento visible (con audio reproducible si lo hay) en vez de
     /// borrarlo en silencio, para que el usuario sepa qué pasó y pueda recuperarlo o eliminarlo.
     func failVoiceNote(id: UUID) {
+        voicePasteGuards.removeValue(forKey: id)
         guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
         items[idx].text = nil
         items[idx].preview = items[idx].audioFileName != nil ? Self.voiceFailed : Self.voiceFailedNoAudio

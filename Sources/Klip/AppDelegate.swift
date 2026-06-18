@@ -26,6 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             button.image = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "Klip")?
                 .withSymbolConfiguration(cfg)
         }
+        installMainMenu()
         buildMenu()
         panelController = PanelController(manager: manager, statusItem: statusItem)
         panelController.onOpenPreferences = { [weak self] in self?.openPreferences() }
@@ -33,6 +34,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setupHotKeys()
         maybeEnableLoginOnce()
         Settings.shared.$uiLanguage.dropFirst().sink { [weak self] _ in self?.buildMenu() }.store(in: &cancellables)
+    }
+
+    // Una app accesoria (.accessory) no tiene menú principal, así que los campos de texto de
+    // SwiftUI no reciben ⌘X/⌘C/⌘V/⌘A (no hay menú "Editar" que enrute esos atajos por la
+    // cadena de responders). Instalamos un menú principal mínimo con un menú Editar estándar.
+    private func installMainMenu() {
+        let mainMenu = NSMenu()
+
+        // Menú de la app (necesario para que el menú Editar aparezca como segundo).
+        let appMenuItem = NSMenuItem()
+        mainMenu.addItem(appMenuItem)
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: L10n.t("menu.quit"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenuItem.submenu = appMenu
+
+        // Menú Editar con los atajos estándar (target nil → cadena de responders).
+        let editMenuItem = NSMenuItem()
+        mainMenu.addItem(editMenuItem)
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenuItem.submenu = editMenu
+
+        NSApp.mainMenu = mainMenu
     }
 
     private func buildMenu() {

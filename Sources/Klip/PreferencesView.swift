@@ -36,6 +36,7 @@ struct PreferencesView: View {
     @ObservedObject var settings = Settings.shared
     var onHotKeyChange: (KeyCombo) -> Void
     var onVoiceHotKeyChange: (KeyCombo) -> Void
+    var onCaptureHotKeyChange: (KeyCombo) -> Void
     var onMaxItemsChange: () -> Void
 
     @StateObject private var apiKey = APIKeyModel(.openai)
@@ -131,6 +132,8 @@ struct PreferencesView: View {
                     HotKeyField(combo: $settings.combo, onChange: onHotKeyChange) }
                 HStack { Text("Grabar nota de voz:"); Spacer()
                     HotKeyField(combo: $settings.voiceCombo, onChange: onVoiceHotKeyChange) }
+                HStack { Text("Capturar región:"); Spacer()
+                    HotKeyField(combo: $settings.captureCombo, onChange: onCaptureHotKeyChange) }
                 Text("Pulsa el campo y teclea la combinación, o usa ⌄ para elegir una sugerida.")
                     .font(.caption).foregroundStyle(.secondary)
             }

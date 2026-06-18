@@ -6,6 +6,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
 
     convenience init(onHotKeyChange: @escaping (KeyCombo) -> Void,
                      onVoiceHotKeyChange: @escaping (KeyCombo) -> Void,
+                     onCaptureHotKeyChange: @escaping (KeyCombo) -> Void,
                      onMaxItemsChange: @escaping () -> Void) {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 500, height: 700),
@@ -16,6 +17,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
         window.contentView = NSHostingView(
             rootView: PreferencesView(onHotKeyChange: onHotKeyChange,
                                       onVoiceHotKeyChange: onVoiceHotKeyChange,
+                                      onCaptureHotKeyChange: onCaptureHotKeyChange,
                                       onMaxItemsChange: onMaxItemsChange))
         window.center()
         self.init(window: window)

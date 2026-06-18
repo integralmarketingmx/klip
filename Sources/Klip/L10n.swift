@@ -11,6 +11,7 @@ enum L10n {
 
     private static let es: [String: String] = [
         "menu.show": "Mostrar historial",
+        "menu.capture": "Capturar región",
         "menu.prefs": "Preferencias…",
         "menu.login": "Abrir al iniciar sesión",
         "menu.autopaste": "Activar pegado automático…",
@@ -77,6 +78,7 @@ enum L10n {
 
     private static let en: [String: String] = [
         "menu.show": "Show history",
+        "menu.capture": "Capture region",
         "menu.prefs": "Preferences…",
         "menu.login": "Open at login",
         "menu.autopaste": "Enable auto-paste…",

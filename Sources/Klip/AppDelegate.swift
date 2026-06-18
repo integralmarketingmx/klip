@@ -11,7 +11,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }()
     private let manager = ClipboardManager()
     private var panelController: PanelController!
-    private var snapController: SnapController!
     private var hotKey: HotKey?
     private var voiceHotKey: HotKey?
     private var captureHotKey: HotKey?
@@ -33,8 +32,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         buildMenu()
         panelController = PanelController(manager: manager, statusItem: statusItem)
         panelController.onOpenPreferences = { [weak self] in self?.openPreferences() }
-        snapController = SnapController(manager: manager)
-        snapController.onCaptured = { [weak self] in self?.panelController.show() }
         manager.start()
         setupHotKeys()
         maybeEnableLoginOnce()
@@ -73,14 +70,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                      action: #selector(showPanel), keyEquivalent: "")
         menu.addItem(withTitle: "\(L10n.t("rec.record"))   \(Settings.shared.voiceCombo.displayString)",
                      action: #selector(startVoice), keyEquivalent: "")
-        // Flujo del jefe (upstream): captura + anotación con su AnnotationView, ligado a ⌘⇧2.
+        // Captura + anotación (editor unificado: base del jefe + mejoras de Mike).
         menu.addItem(withTitle: "\(L10n.t("capture.annotate"))   \(Settings.shared.captureCombo.displayString)",
                      action: #selector(captureAnnotate), keyEquivalent: "")
         menu.addItem(withTitle: L10n.t("capture.full"), action: #selector(captureAnnotateFull), keyEquivalent: "")
-        // Flujo nuestro (Klip Snap): ScreenCaptureKit + editor propio, accesible desde el menú para
-        // comparar ambas implementaciones durante la revisión.
-        menu.addItem(withTitle: "Klip Snap (captura alternativa)",
-                     action: #selector(startCapture), keyEquivalent: "")
         menu.addItem(.separator())
         let recents = NSMenuItem(title: "Recientes", action: nil, keyEquivalent: "")
         recentsMenu.delegate = self
@@ -113,10 +106,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func makeVoiceHotKey(_ c: KeyCombo) {
         voiceHotKey = HotKey(keyCode: c.keyCode, modifiers: c.carbonModifiers, id: 2) { [weak self] in
             self?.panelController.toggleVoiceRecording()
-        }
-        let cap = Settings.shared.captureCombo
-        captureHotKey = HotKey(keyCode: cap.keyCode, modifiers: cap.carbonModifiers, id: 3) { [weak self] in
-            self?.snapController.start()
         }
     }
     private func makeCaptureHotKey(_ c: KeyCombo) {
@@ -221,7 +210,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func showPanel() { panelController.show() }
     @objc private func startVoice() { panelController.toggleVoiceRecording() }
-    @objc private func startCapture() { snapController.start() }
     @objc private func captureAnnotate() { panelController.captureAndAnnotate(fullScreen: false) }
     @objc private func captureAnnotateFull() { panelController.captureAndAnnotate(fullScreen: true) }
     @objc private func showGuideMenu() { panelController.showGuide() }

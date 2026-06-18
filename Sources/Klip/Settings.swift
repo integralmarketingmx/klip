@@ -96,6 +96,7 @@ final class Settings: ObservableObject {
         static let captureSrc = "captureSource"
         static let detectRem  = "detectRemoteSource"
         static let transModel = "transcriptionModel"
+        static let geminiModel = "geminiModel"
         static let transLang  = "transcriptionLanguage"
         static let aiProv     = "aiProvider"
         static let keyCode2   = "voiceHotKeyCode"
@@ -116,6 +117,8 @@ final class Settings: ObservableObject {
     @Published var captureSource: Bool    { didSet { d.set(captureSource, forKey: K.captureSrc) } }
     @Published var detectRemoteSource: Bool { didSet { d.set(detectRemoteSource, forKey: K.detectRem) } }
     @Published var transcriptionModel: String { didSet { d.set(transcriptionModel, forKey: K.transModel) } }
+    /// Modelo de Google Gemini para transcripción (configurable; antes fijo en "gemini-flash-latest").
+    @Published var geminiModel: String { didSet { d.set(geminiModel, forKey: K.geminiModel) } }
     @Published var transcriptionLanguage: String { didSet { d.set(transcriptionLanguage, forKey: K.transLang) } }
     /// Proveedor de IA para transcripción: "openai" o "gemini".
     @Published var aiProvider: String { didSet { d.set(aiProvider, forKey: K.aiProv) } }
@@ -144,6 +147,7 @@ final class Settings: ObservableObject {
             K.captureSrc: true,
             K.detectRem: true,
             K.transModel: "gpt-4o-mini-transcribe",
+            K.geminiModel: "gemini-flash-latest",
             K.transLang: "es",
             K.aiProv: "openai",
             K.keyCode2: Int(kVK_ANSI_I),
@@ -161,6 +165,7 @@ final class Settings: ObservableObject {
         captureSource = d.object(forKey: K.captureSrc) as? Bool ?? true
         detectRemoteSource = d.object(forKey: K.detectRem) as? Bool ?? true
         transcriptionModel = d.string(forKey: K.transModel) ?? "gpt-4o-mini-transcribe"
+        geminiModel = d.string(forKey: K.geminiModel) ?? "gemini-flash-latest"
         transcriptionLanguage = d.string(forKey: K.transLang) ?? "es"
         aiProvider = d.string(forKey: K.aiProv) ?? "openai"
         voiceCombo = KeyCombo(keyCode: UInt32(d.integer(forKey: K.keyCode2)),

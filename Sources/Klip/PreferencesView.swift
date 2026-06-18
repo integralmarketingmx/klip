@@ -49,6 +49,10 @@ struct PreferencesView: View {
     @State private var accessibilityGranted = Paster.hasAccessibilityPermission
 
     private let models = ["gpt-4o-mini-transcribe", "whisper-1"]
+    // Modelos de Gemini. Los alias "-latest" evitan 404 por deprecación; se incluyen también
+    // versiones fijadas para quien quiera estabilidad de comportamiento.
+    private let geminiModels = ["gemini-flash-latest", "gemini-flash-lite-latest",
+                                "gemini-pro-latest", "gemini-2.5-flash", "gemini-2.5-pro"]
     private let languages = ["es": "Español", "en": "Inglés", "": "Detectar automáticamente"]
 
     private var appLogo: NSImage? {
@@ -142,7 +146,9 @@ struct PreferencesView: View {
                         ForEach(models, id: \.self) { Text($0).tag($0) }
                     }
                 } else {
-                    LabeledContent("Modelo", value: "gemini-flash-latest")
+                    Picker("Modelo", selection: $settings.geminiModel) {
+                        ForEach(geminiModels, id: \.self) { Text($0).tag($0) }
+                    }
                 }
                 Picker("Idioma del audio", selection: $settings.transcriptionLanguage) {
                     ForEach(languages.sorted(by: { $0.value < $1.value }), id: \.key) { Text($1).tag($0) }

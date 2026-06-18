@@ -5,7 +5,12 @@ import Foundation
 final class GeminiClient {
     static let shared = GeminiClient()
     private let session: URLSession
-    private let model = "gemini-flash-latest"   // alias siempre al último flash (evita 404 por deprecación)
+    /// Modelo configurable en Preferencias. Por defecto "gemini-flash-latest" (alias siempre al último
+    /// flash, evita 404 por deprecación). Se lee en cada transcripción para reflejar cambios en caliente.
+    private var model: String {
+        let m = Settings.shared.geminiModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        return m.isEmpty ? "gemini-flash-latest" : m
+    }
     init(session: URLSession = .shared) { self.session = session }
 
     var hasAPIKey: Bool {

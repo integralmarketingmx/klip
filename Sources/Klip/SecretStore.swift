@@ -20,12 +20,21 @@ enum SecretStore {
         return t.isEmpty ? nil : t
     }
 
-    static func set(_ value: String, _ k: Key = .openai) {
+    /// Guarda la clave y CONFIRMA leyéndola de vuelta. Devuelve `true` solo si el archivo
+    /// quedó escrito con exactamente el valor esperado. Propaga el error real si la escritura falla
+    /// (p. ej. permisos del directorio), en vez de tragárselo con `try?`.
+    @discardableResult
+    static func set(_ value: String, _ k: Key = .openai) throws -> Bool {
         let t = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !t.isEmpty else { return }
+        guard !t.isEmpty else { return false }
         let url = fileURL(k)
-        try? t.write(to: url, atomically: true, encoding: .utf8)
+        // Asegurar que el directorio base existe (Storage lo crea, pero no de más).
+        try? FileManager.default.createDirectory(at: Storage.shared.baseURL,
+                                                 withIntermediateDirectories: true)
+        try t.write(to: url, atomically: true, encoding: .utf8)   // sin try?: que el error suba
         try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        // Confirmación: releer del disco y comparar (detecta escrituras silenciosamente fallidas).
+        return get(k) == t
     }
 
     static func delete(_ k: Key = .openai) { try? FileManager.default.removeItem(at: fileURL(k)) }

@@ -25,6 +25,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
     var audioFileName: String?    // nota de voz: archivo de audio original guardado (m4a) para reproducir
     var audioDuration: Double?    // duración del audio en segundos (para mostrar y la barra de progreso)
     var name: String?             // etiqueta puesta por el usuario (título buscable; aplica a cualquier elemento)
+    var collection: String?       // nombre de la colección a la que pertenece (agrupar lotes de contexto)
 
     init(id: UUID = UUID(),
          kind: ClipboardKind,
@@ -40,7 +41,8 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
          isCredential: Bool? = nil,
          audioFileName: String? = nil,
          audioDuration: Double? = nil,
-         name: String? = nil) {
+         name: String? = nil,
+         collection: String? = nil) {
         self.id = id
         self.kind = kind
         self.text = text
@@ -56,6 +58,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
         self.audioFileName = audioFileName
         self.audioDuration = audioDuration
         self.name = name
+        self.collection = collection
     }
 
     // == completo: SwiftUI lo usa para decidir si re-renderiza una fila. Debe reflejar también
@@ -67,6 +70,6 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
             && lhs.isRemote == rhs.isRemote
             && lhs.text == rhs.text && lhs.preview == rhs.preview
             && lhs.imageFileName == rhs.imageFileName && lhs.audioFileName == rhs.audioFileName
-            && lhs.name == rhs.name
+            && lhs.name == rhs.name && lhs.collection == rhs.collection
     }
 }

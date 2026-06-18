@@ -73,7 +73,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                      action: #selector(showPanel), keyEquivalent: "")
         menu.addItem(withTitle: "\(L10n.t("rec.record"))   \(Settings.shared.voiceCombo.displayString)",
                      action: #selector(startVoice), keyEquivalent: "")
-        menu.addItem(withTitle: "\(L10n.t("menu.capture"))   \(Settings.shared.captureCombo.displayString)",
+        // Flujo del jefe (upstream): captura + anotación con su AnnotationView, ligado a ⌘⇧2.
+        menu.addItem(withTitle: "\(L10n.t("capture.annotate"))   \(Settings.shared.captureCombo.displayString)",
+                     action: #selector(captureAnnotate), keyEquivalent: "")
+        menu.addItem(withTitle: L10n.t("capture.full"), action: #selector(captureAnnotateFull), keyEquivalent: "")
+        // Flujo nuestro (Klip Snap): ScreenCaptureKit + editor propio, accesible desde el menú para
+        // comparar ambas implementaciones durante la revisión.
+        menu.addItem(withTitle: "Klip Snap (captura alternativa)",
                      action: #selector(startCapture), keyEquivalent: "")
         menu.addItem(.separator())
         let recents = NSMenuItem(title: "Recientes", action: nil, keyEquivalent: "")
@@ -99,13 +105,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.menu = menu
     }
 
-    private func setupHotKeys() {
-        let c = Settings.shared.combo
+    private func makePanelHotKey(_ c: KeyCombo) {
         hotKey = HotKey(keyCode: c.keyCode, modifiers: c.carbonModifiers, id: 1) { [weak self] in
             self?.panelController.toggle()
         }
-        let v = Settings.shared.voiceCombo
-        voiceHotKey = HotKey(keyCode: v.keyCode, modifiers: v.carbonModifiers, id: 2) { [weak self] in
+    }
+    private func makeVoiceHotKey(_ c: KeyCombo) {
+        voiceHotKey = HotKey(keyCode: c.keyCode, modifiers: c.carbonModifiers, id: 2) { [weak self] in
             self?.panelController.toggleVoiceRecording()
         }
         let cap = Settings.shared.captureCombo
@@ -113,31 +119,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.snapController.start()
         }
     }
+    private func makeCaptureHotKey(_ c: KeyCombo) {
+        captureHotKey = HotKey(keyCode: c.keyCode, modifiers: c.carbonModifiers, id: 3) { [weak self] in
+            self?.panelController.captureAndAnnotate(fullScreen: false)
+        }
+    }
+
+    private func setupHotKeys() {
+        makePanelHotKey(Settings.shared.combo)
+        makeVoiceHotKey(Settings.shared.voiceCombo)
+        makeCaptureHotKey(Settings.shared.captureCombo)
+        // Si una combinación persistida colisiona con otra al arrancar (HotKey.init devuelve nil), el
+        // atajo quedaría muerto toda la sesión. Recuperar con su atajo por defecto para no perderlo.
+        if hotKey == nil, Settings.shared.combo != .defaultCombo {
+            Settings.shared.combo = .defaultCombo; lastGoodCombo = .defaultCombo; makePanelHotKey(.defaultCombo)
+        }
+        if voiceHotKey == nil, Settings.shared.voiceCombo != .defaultVoiceCombo {
+            Settings.shared.voiceCombo = .defaultVoiceCombo; lastGoodVoiceCombo = .defaultVoiceCombo; makeVoiceHotKey(.defaultVoiceCombo)
+        }
+        if captureHotKey == nil, Settings.shared.captureCombo != .defaultCaptureCombo {
+            Settings.shared.captureCombo = .defaultCaptureCombo; lastGoodCaptureCombo = .defaultCaptureCombo; makeCaptureHotKey(.defaultCaptureCombo)
+        }
+    }
+
+    private func applyCaptureHotKey(_ combo: KeyCombo) {
+        let ok: Bool
+        if captureHotKey == nil { makeCaptureHotKey(combo); ok = (captureHotKey != nil) }   // estaba muerto: re-crear
+        else { ok = captureHotKey?.reRegister(keyCode: combo.keyCode, modifiers: combo.carbonModifiers) == true }
+        if ok { lastGoodCaptureCombo = combo }
+        else { NSSound.beep(); showAlert(L10n.t("act.prefs"), L10n.t("hotkey.inuse")); Settings.shared.captureCombo = lastGoodCaptureCombo }
+        buildMenu()
+    }
 
     private func applyHotKey(_ combo: KeyCombo) {
-        if hotKey?.reRegister(keyCode: combo.keyCode, modifiers: combo.carbonModifiers) == true {
-            lastGoodCombo = combo
-        } else {
-            NSSound.beep(); Settings.shared.combo = lastGoodCombo   // colisión: revertir
-        }
+        let ok: Bool
+        if hotKey == nil { makePanelHotKey(combo); ok = (hotKey != nil) }
+        else { ok = hotKey?.reRegister(keyCode: combo.keyCode, modifiers: combo.carbonModifiers) == true }
+        if ok { lastGoodCombo = combo }
+        else { NSSound.beep(); showAlert(L10n.t("act.prefs"), L10n.t("hotkey.inuse")); Settings.shared.combo = lastGoodCombo }   // colisión: revertir
         buildMenu()
     }
 
     private func applyVoiceHotKey(_ combo: KeyCombo) {
-        if voiceHotKey?.reRegister(keyCode: combo.keyCode, modifiers: combo.carbonModifiers) == true {
-            lastGoodVoiceCombo = combo
-        } else {
-            NSSound.beep(); Settings.shared.voiceCombo = lastGoodVoiceCombo
-        }
-        buildMenu()
-    }
-
-    private func applyCaptureHotKey(_ combo: KeyCombo) {
-        if captureHotKey?.reRegister(keyCode: combo.keyCode, modifiers: combo.carbonModifiers) == true {
-            lastGoodCaptureCombo = combo
-        } else {
-            NSSound.beep(); Settings.shared.captureCombo = lastGoodCaptureCombo
-        }
+        let ok: Bool
+        if voiceHotKey == nil { makeVoiceHotKey(combo); ok = (voiceHotKey != nil) }
+        else { ok = voiceHotKey?.reRegister(keyCode: combo.keyCode, modifiers: combo.carbonModifiers) == true }
+        if ok { lastGoodVoiceCombo = combo }
+        else { NSSound.beep(); showAlert(L10n.t("act.prefs"), L10n.t("hotkey.inuse")); Settings.shared.voiceCombo = lastGoodVoiceCombo }
         buildMenu()
     }
 
@@ -194,6 +222,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func showPanel() { panelController.show() }
     @objc private func startVoice() { panelController.toggleVoiceRecording() }
     @objc private func startCapture() { snapController.start() }
+    @objc private func captureAnnotate() { panelController.captureAndAnnotate(fullScreen: false) }
+    @objc private func captureAnnotateFull() { panelController.captureAndAnnotate(fullScreen: true) }
     @objc private func showGuideMenu() { panelController.showGuide() }
 
     @objc private func openPreferences() {

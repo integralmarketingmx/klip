@@ -12,6 +12,9 @@ final class SelectionModel: ObservableObject {
     @Published var openToken: Int = 0
     /// Se incrementa para devolver el foco al buscador SIN limpiar búsqueda/filtro (p.ej. tras renombrar).
     @Published var focusToken: Int = 0
+    /// true mientras el panel está en modo multi-selección por lote: el teclado (Return / ⌘1-9) NO debe
+    /// pegar ni cerrar el panel (rompería el lote que el usuario está armando). Lo sincroniza HistoryView.
+    @Published var selecting: Bool = false
 
     var visibleCount: Int { visibleIDs.count }
 

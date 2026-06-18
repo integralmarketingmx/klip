@@ -5,8 +5,8 @@ import AppKit
 /// reeditar y cambiar tamaño. Aplana todo a imagen a resolución completa.
 final class AnnotationCanvasView: NSView {
     private let baseImage: NSImage
-    private(set) var annotations: [Annotation] = []
-    private var draft: Annotation?
+    private(set) var annotations: [SnapAnnotation] = []
+    private var draft: SnapAnnotation?
 
     // Texto in-place / selección.
     private var activeTextField: NSTextField?
@@ -90,7 +90,7 @@ final class AnnotationCanvasView: NSView {
         // Herramientas de dibujo.
         selectedTextID = nil
         commitActiveText()
-        draft = Annotation(tool: currentTool, color: currentColor,
+        draft = SnapAnnotation(tool: currentTool, color: currentColor,
                            lineWidth: currentLineWidth, points: [p], text: nil)
     }
 
@@ -126,7 +126,7 @@ final class AnnotationCanvasView: NSView {
 
     // MARK: - Texto in-place
 
-    private func beginTextEditing(at point: NSPoint, existing: Annotation?) {
+    private func beginTextEditing(at point: NSPoint, existing: SnapAnnotation?) {
         let fontSize = existing?.fontSize ?? currentFontSize
         let color = existing?.color ?? currentColor
         let font = NSFont.systemFont(ofSize: fontSize, weight: .semibold)
@@ -168,7 +168,7 @@ final class AnnotationCanvasView: NSView {
         let lineHeight = font.ascender - font.descender
         let drawY = frame.minY + (frame.height - lineHeight) / 2
         let origin = CGPoint(x: frame.minX + 4, y: drawY)
-        var ann = Annotation(tool: .text, color: editColor, lineWidth: currentLineWidth,
+        var ann = SnapAnnotation(tool: .text, color: editColor, lineWidth: currentLineWidth,
                              points: [origin], text: text, fontSize: editFontSize)
         if let id { ann.id = id }   // conserva la identidad al reeditar
         annotations.append(ann)

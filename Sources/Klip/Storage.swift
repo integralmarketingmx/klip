@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import PDFKit
 
 /// Persistencia en disco: metadatos del historial (JSON), imágenes (PNG) y audio temporal (m4a).
 final class Storage {
@@ -98,6 +99,13 @@ final class Storage {
     }
 
     func pngData(from image: NSImage) -> Data? {
+        // Si la imagen ya tiene un bitmap, codificar PNG directo desde el rep de mayor resolución
+        // (evita el round-trip por TIFF, que duplica memoria con capturas grandes).
+        if let rep = image.representations.compactMap({ $0 as? NSBitmapImageRep })
+            .max(by: { $0.pixelsWide < $1.pixelsWide }),
+           let png = rep.representation(using: .png, properties: [:]) {
+            return png
+        }
         guard let tiff = image.tiffRepresentation,
               let rep = NSBitmapImageRep(data: tiff) else { return nil }
         return rep.representation(using: .png, properties: [:])
@@ -254,5 +262,91 @@ final class Storage {
             throw NSError(domain: "Klip", code: Int(p.terminationStatus),
                           userInfo: [NSLocalizedDescriptionKey: "No se pudo comprimir/descomprimir (ditto \(p.terminationStatus))."])
         }
+    }
+
+    // MARK: - Combinar / exportar selección (vibe coders)
+
+    /// Combina varios elementos en un PDF (una página por elemento): imágenes como página de imagen,
+    /// textos como página de texto. Para subir varias capturas/notas de una sola vez a una IA.
+    /// Devuelve los datos y cuántas páginas se generaron (puede ser menos que items.count si algún
+    /// elemento no tenía contenido exportable). nil si no se pudo generar ninguna página.
+    func combinedPDF(from items: [ClipboardItem]) -> (data: Data, exported: Int)? {
+        let doc = PDFDocument()
+        var idx = 0
+        for it in items {
+            var pageImage: NSImage?
+            if it.kind == .image, let f = it.imageFileName { pageImage = loadImage(fileName: f) }
+            else if let t = it.text, !t.isEmpty { pageImage = Self.pageImage(forText: t) }
+            if let img = pageImage, let page = PDFPage(image: img) { doc.insert(page, at: idx); idx += 1 }
+        }
+        guard idx > 0, let data = doc.dataRepresentation() else { return nil }
+        return (data, idx)
+    }
+
+    /// Renderiza un texto en una "página" (imagen tamaño carta) con márgenes, para incrustar en el PDF.
+    /// Usa un drawingHandler (seguro fuera del hilo principal) en vez de lockFocus, ya que combinedPDF
+    /// se ejecuta en una cola de fondo.
+    private static func pageImage(forText text: String) -> NSImage {
+        let pageW: CGFloat = 612, margin: CGFloat = 40   // US Letter a 72 dpi
+        let style = NSMutableParagraphStyle(); style.lineSpacing = 3
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
+            .foregroundColor: NSColor.black, .paragraphStyle: style]
+        let textW = pageW - margin * 2
+        let bounds = (text as NSString).boundingRect(
+            with: NSSize(width: textW, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attrs)
+        let pageH = max(200, ceil(bounds.height) + margin * 2)
+        return NSImage(size: NSSize(width: pageW, height: pageH), flipped: false) { _ in
+            NSColor.white.setFill()
+            NSRect(x: 0, y: 0, width: pageW, height: pageH).fill()
+            (text as NSString).draw(with: NSRect(x: margin, y: margin, width: textW, height: pageH - margin * 2),
+                                    options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attrs)
+            return true
+        }
+    }
+
+    /// Cuántos de los elementos tienen contenido que exportar a ZIP (imagen en disco, audio, o texto).
+    func zipExportableCount(_ items: [ClipboardItem]) -> Int {
+        let fm = FileManager.default
+        return items.reduce(0) { acc, it in
+            if it.kind == .image, let f = it.imageFileName, fm.fileExists(atPath: imageURL(for: f).path) { return acc + 1 }
+            if let af = it.audioFileName, audioExists(fileName: af) { return acc + 1 }
+            if let t = it.text, !t.isEmpty { return acc + 1 }
+            return acc
+        }
+    }
+
+    /// Exporta los elementos seleccionados a un .zip (imágenes PNG, textos .txt, audios). Para subir el lote junto.
+    func exportItemsZip(_ items: [ClipboardItem], to dest: URL) throws {
+        let fm = FileManager.default
+        let work = fm.temporaryDirectory.appendingPathComponent("KlipSel-\(UUID().uuidString)", isDirectory: true)
+        let stage = work.appendingPathComponent("Klip", isDirectory: true)
+        try fm.createDirectory(at: stage, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: work) }
+        for (i, it) in items.enumerated() {
+            let n = String(format: "%02d", i + 1)
+            let base = (it.name?.isEmpty == false ? it.name! : "item").replacingOccurrences(of: "/", with: "-")
+            if it.kind == .image, let f = it.imageFileName, fm.fileExists(atPath: imageURL(for: f).path) {
+                try? fm.copyItem(at: imageURL(for: f), to: stage.appendingPathComponent("\(n)-\(base).png"))
+            } else if let af = it.audioFileName, audioExists(fileName: af) {
+                try? fm.copyItem(at: audioURL(for: af), to: stage.appendingPathComponent("\(n)-\(base).m4a"))
+                if let t = it.text, !t.isEmpty { try? t.data(using: .utf8)?.write(to: stage.appendingPathComponent("\(n)-\(base).txt")) }
+            } else if let t = it.text, !t.isEmpty {
+                try? t.data(using: .utf8)?.write(to: stage.appendingPathComponent("\(n)-\(base).txt"))
+            }
+        }
+        try? fm.removeItem(at: dest)
+        try Self.runDitto(["-c", "-k", "--keepParent", stage.path, dest.path])
+    }
+}
+
+extension NSImage {
+    /// Dimensiones REALES en píxeles (no en puntos): toma el rep de mayor resolución. En pantallas
+    /// retina, `size` viene en puntos (la mitad), así que esto es lo que el usuario espera ver.
+    var pixelDimensions: NSSize {
+        var w = 0, h = 0
+        for r in representations { w = max(w, r.pixelsWide); h = max(h, r.pixelsHigh) }
+        return (w > 0 && h > 0) ? NSSize(width: w, height: h) : size
     }
 }

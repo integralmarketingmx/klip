@@ -34,10 +34,19 @@ struct HistoryView: View {
     var onShowGuide: () -> Void
     var onRename: (ClipboardItem) -> Void
     var onRetryTranscription: (ClipboardItem) -> Void
+    var onSaveAsFile: (ClipboardItem) -> Void
+    var onCopyAsCode: (ClipboardItem) -> Void
+    var onCaptureAnnotate: () -> Void
+    var onCombinePDF: ([ClipboardItem]) -> Void
+    var onExportZip: ([ClipboardItem]) -> Void
+    var onAssignCollection: ([ClipboardItem]) -> Void
 
     @State private var search = ""
     @FocusState private var searchFocused: Bool
     @State private var filter: HistoryFilter = .all
+    @State private var collectionFilter: String?
+    @State private var selecting = false
+    @State private var selectedBatch: Set<UUID> = []
     @State private var ocrResultID: UUID?
     @State private var ocrText = ""
     @State private var ocrRunning = false
@@ -65,6 +74,7 @@ struct HistoryView: View {
 
     private var filtered: [ClipboardItem] {
         var base = sortedItems.filter { matches($0, filter) }
+        if let cf = collectionFilter { base = base.filter { $0.collection == cf } }
         guard !search.isEmpty else { return base }
         let q = search.lowercased()
         base = base.filter {
@@ -81,15 +91,30 @@ struct HistoryView: View {
             if !manager.items.isEmpty { filterRow }
             Divider()
             if filtered.isEmpty { emptyState } else { list }
+            if selecting { batchBar }
         }
         .frame(minWidth: 420, minHeight: 460)
         .background(Color.clear)
         .onAppear { syncVisible(); searchFocused = true }
         .onChange(of: search) { _, _ in syncVisible() }
         .onChange(of: filter) { _, _ in syncVisible() }
-        .onChange(of: manager.items) { _, _ in syncVisible() }
+        .onChange(of: collectionFilter) { _, _ in syncVisible() }
+        .onChange(of: manager.items) { _, _ in
+            // Si la colección filtrada dejó de existir (se borró/renombró su último elemento), soltar el
+            // filtro: si no, la lista quedaría falsamente vacía sin chip visible para limpiarlo.
+            if let cf = collectionFilter, !manager.collections.contains(cf) { collectionFilter = nil }
+            // Quitar del lote los ids que ya no existen (p. ej. auto-recorte por maxItems al entrar clips
+            // nuevos): mantiene el contador "N sel." sincronizado con lo que realmente se exportará.
+            if !selectedBatch.isEmpty {
+                let pruned = selectedBatch.intersection(Set(manager.items.map(\.id)))
+                if pruned.count != selectedBatch.count { selectedBatch = pruned }
+            }
+            syncVisible()
+        }
+        .onChange(of: selecting) { _, newValue in selection.selecting = newValue }
         .onChange(of: selection.openToken) { _, _ in
-            search = ""; filter = .all
+            search = ""; filter = .all; collectionFilter = nil
+            selecting = false; selectedBatch = []
             selection.updateVisible(sortedItems.map(\.id))
             selection.selectedIndex = sortedItems.isEmpty ? -1 : 0
             searchFocused = true
@@ -103,34 +128,47 @@ struct HistoryView: View {
 
     private var header: some View {
         VStack(spacing: 10) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 if let logo = Self.appLogo {
                     Image(nsImage: logo).resizable().frame(width: 22, height: 22)
                 }
                 Text("Klip").font(.system(size: 15, weight: .semibold))
-                Spacer()
+                Spacer(minLength: 8)
                 if recorder.transcribingCount > 0 {
                     HStack(spacing: 4) {
                         ProgressView().controlSize(.small)
                         Text("\(recorder.transcribingCount)").font(.system(size: 11)).foregroundStyle(.secondary)
                     }
                     .help(L10n.t("rec.transcribing"))
+                    .padding(.trailing, 2)
                 }
-                Button { onVoiceRecord() } label: {
-                    Image(systemName: recorder.state == .recording ? "mic.fill" : "mic")
-                        .foregroundStyle(recorder.state == .recording ? .red : .primary)
+                // Iconos de acción: tamaño uniforme y separación holgada para que no se encimen.
+                HStack(spacing: 15) {
+                    Button { toggleSelecting() } label: {
+                        Image(systemName: selecting ? "checkmark.circle.fill" : "checkmark.circle")
+                            .foregroundStyle(selecting ? Color.accentColor : .primary)
+                    }
+                    .buttonStyle(.borderless).help(L10n.t("sel.toggle"))
+                    Button { onCaptureAnnotate() } label: { Image(systemName: "camera.viewfinder") }
+                        .buttonStyle(.borderless).help(L10n.t("capture.annotate"))
+                    Button { onVoiceRecord() } label: {
+                        Image(systemName: recorder.state == .recording ? "mic.fill" : "mic")
+                            .foregroundStyle(recorder.state == .recording ? .red : .primary)
+                    }
+                    .buttonStyle(.borderless).help(L10n.t("rec.record"))
+                    Button { onUploadAudio() } label: { Image(systemName: "waveform.badge.plus") }
+                        .buttonStyle(.borderless).help(L10n.t("act.upload"))
+                    Menu {
+                        Button { onCopyAllMarkdown() } label: { Label(L10n.t("act.copyallmd"), systemImage: "doc.richtext") }
+                        Divider()
+                        Button { onShowGuide() } label: { Label(L10n.t("act.guide"), systemImage: "questionmark.circle") }
+                    } label: { Image(systemName: "ellipsis.circle") }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help(L10n.t("act.more"))
+                    Button { onOpenPreferences() } label: { Image(systemName: "gearshape") }
+                        .buttonStyle(.borderless).help(L10n.t("act.prefs"))
                 }
-                .buttonStyle(.borderless).help(L10n.t("rec.record"))
-                Button { onUploadAudio() } label: { Image(systemName: "waveform.badge.plus") }
-                    .buttonStyle(.borderless).help(L10n.t("act.upload"))
-                Menu {
-                    Button { onCopyAllMarkdown() } label: { Label(L10n.t("act.copyallmd"), systemImage: "doc.richtext") }
-                    Divider()
-                    Button { onShowGuide() } label: { Label(L10n.t("act.guide"), systemImage: "questionmark.circle") }
-                } label: { Image(systemName: "ellipsis.circle") }
-                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help(L10n.t("act.more"))
-                Button { onOpenPreferences() } label: { Image(systemName: "gearshape") }
-                    .buttonStyle(.borderless).help(L10n.t("act.prefs"))
+                .font(.system(size: 15))
+                .imageScale(.medium)
             }
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
@@ -152,22 +190,73 @@ struct HistoryView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
                 ForEach(HistoryFilter.allCases) { f in
-                    let sel = filter == f
-                    Button { filter = f } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: f.icon).font(.system(size: 10))
-                            Text(L10n.t(f.labelKey)).font(.system(size: 11))
-                        }
-                        .padding(.horizontal, 9).padding(.vertical, 4)
-                        .background(Capsule().fill(sel ? Color.accentColor.opacity(0.22) : Color.primary.opacity(0.06)))
-                        .overlay(Capsule().stroke(sel ? Color.accentColor.opacity(0.5) : .clear, lineWidth: 1))
+                    chip(L10n.t(f.labelKey), icon: f.icon, selected: filter == f && collectionFilter == nil) {
+                        filter = f; collectionFilter = nil
                     }
-                    .buttonStyle(.plain)
+                }
+                ForEach(manager.collections, id: \.self) { name in
+                    chip(name, icon: "folder", selected: collectionFilter == name) {
+                        let now = (collectionFilter == name ? nil : name)
+                        collectionFilter = now
+                        // Al activar una colección, soltar el filtro de tipo: si no, un `.image` (u otro)
+                        // invisible seguiría ocultando elementos de la colección sin que ningún chip lo muestre.
+                        if now != nil { filter = .all }
+                    }
                 }
             }
             .padding(.horizontal, 12)
         }
         .padding(.bottom, 8)
+    }
+
+    private func chip(_ text: String, icon: String, selected: Bool, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: icon).font(.system(size: 10))
+                Text(text).font(.system(size: 11))
+            }
+            .padding(.horizontal, 9).padding(.vertical, 4)
+            .background(Capsule().fill(selected ? Color.accentColor.opacity(0.22) : Color.primary.opacity(0.06)))
+            .overlay(Capsule().stroke(selected ? Color.accentColor.opacity(0.5) : .clear, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Selección por lote (vibe coders)
+
+    private func toggleSelecting() {
+        selecting.toggle()
+        if !selecting { selectedBatch = [] }
+    }
+    private func toggleCheck(_ id: UUID) {
+        if selectedBatch.contains(id) { selectedBatch.remove(id) } else { selectedBatch.insert(id) }
+    }
+    // Orden VISIBLE (fijados primero, luego por fecha) — no el de inserción de manager.items — para que
+    // el PDF/ZIP salga en el mismo orden en que el usuario ve y marca los elementos. Incluye elementos
+    // seleccionados aunque un cambio de filtro los haya ocultado de `filtered`.
+    private var batchItems: [ClipboardItem] { sortedItems.filter { selectedBatch.contains($0.id) } }
+
+    private var batchBar: some View {
+        HStack(spacing: 8) {
+            Text("\(selectedBatch.count) sel.").font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
+            Spacer()
+            batchButton("doc.richtext", "PDF") { onCombinePDF(batchItems) }
+            batchButton("doc.zipper", "ZIP") { onExportZip(batchItems) }
+            batchButton("folder.badge.plus", L10n.t("sel.collection")) { onAssignCollection(batchItems) }
+            Button(L10n.t("sel.done")) { selecting = false; selectedBatch = [] }
+                .font(.system(size: 12))
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(.ultraThinMaterial)
+        .overlay(Divider(), alignment: .top)
+    }
+
+    private func batchButton(_ icon: String, _ label: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) { Image(systemName: icon); Text(label).font(.system(size: 11)) }
+        }
+        .controlSize(.small)
+        .disabled(selectedBatch.isEmpty)
     }
 
     private var list: some View {
@@ -182,7 +271,10 @@ struct HistoryView: View {
                                 onPick: onPick, onSaveImage: onSaveImage,
                                 onCopyMarkdown: onCopyMarkdown, onOCR: { runOCR(item) },
                                 onRename: onRename, onRetryTranscription: onRetryTranscription,
-                                searchTerm: search)
+                                onSaveAsFile: onSaveAsFile, onCopyAsCode: onCopyAsCode,
+                                searchTerm: search,
+                                selecting: selecting, isChecked: selectedBatch.contains(item.id),
+                                onToggleCheck: { toggleCheck(item.id) })
                             .id(item.id)
                         if ocrResultID == item.id { ocrBox }
                     }
@@ -272,7 +364,12 @@ struct ItemRow: View {
     var onOCR: () -> Void
     var onRename: (ClipboardItem) -> Void
     var onRetryTranscription: (ClipboardItem) -> Void
+    var onSaveAsFile: (ClipboardItem) -> Void
+    var onCopyAsCode: (ClipboardItem) -> Void
     var searchTerm: String = ""
+    var selecting: Bool = false
+    var isChecked: Bool = false
+    var onToggleCheck: () -> Void = {}
 
     @State private var hovering = false
     @State private var revealed = false
@@ -333,18 +430,25 @@ struct ItemRow: View {
     }
 
     var body: some View {
-        Group {
-            if item.kind == .image { imageCard } else { standardRow }
+        HStack(spacing: 8) {
+            if selecting {
+                Image(systemName: isChecked ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 18)).foregroundStyle(isChecked ? Color.accentColor : .secondary)
+                    .padding(.leading, 6)
+            }
+            Group {
+                if item.kind == .image { imageCard } else { standardRow }
+            }
         }
         .background(RoundedRectangle(cornerRadius: 8)
-            .fill(isSelected ? Color.accentColor.opacity(0.20)
+            .fill((selecting && isChecked) || (!selecting && isSelected) ? Color.accentColor.opacity(0.20)
                   : (hovering ? Color.primary.opacity(0.07) : Color.clear)))
         .overlay(RoundedRectangle(cornerRadius: 8)
-            .stroke(isSelected ? Color.accentColor.opacity(0.6)
+            .stroke(isSelected && !selecting ? Color.accentColor.opacity(0.6)
                     : (isCredential ? Color.yellow.opacity(0.4) : Color.clear), lineWidth: 1))
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
-        .onTapGesture { onPick(item) }
+        .onTapGesture { if selecting { onToggleCheck() } else { onPick(item) } }
         .onChange(of: resetToken) { _, _ in revealed = false }   // re-enmascarar al reabrir el panel
     }
 
@@ -357,7 +461,7 @@ struct ItemRow: View {
                         .background(Color.primary.opacity(0.05))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.1)))
-                    Text("\(Int(img.size.width))×\(Int(img.size.height))")
+                    Text({ let p = img.pixelDimensions; return "\(Int(p.width))×\(Int(p.height))" }())
                         .font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
                         .padding(.horizontal, 5).padding(.vertical, 2)
                         .background(.ultraThinMaterial, in: Capsule())
@@ -371,7 +475,7 @@ struct ItemRow: View {
                 HStack(spacing: 6) {
                     metadata
                     Spacer(minLength: 4)
-                    if hovering { actions } else if item.pinned { pinDot }
+                    if hovering && !selecting { actions } else if item.pinned { pinDot }
                 }
             }
         }
@@ -394,7 +498,7 @@ struct ItemRow: View {
                 metadata
             }
             Spacer(minLength: 4)
-            if hovering { actions }
+            if hovering && !selecting { actions }
             else if isCredential { Image(systemName: "key.fill").foregroundStyle(.yellow).font(.system(size: 10)) }
             else if item.pinned { pinDot }
         }
@@ -472,8 +576,14 @@ struct ItemRow: View {
                 if let u = linkURL {
                     iconButton("arrow.up.right.square", L10n.t("row.openlink")) { NSWorkspace.shared.open(u) }
                 }
-                iconButton("doc.richtext", L10n.t("row.markdown")) { onCopyMarkdown(item) }
-                iconButton("key", L10n.t("row.markcred")) { manager.toggleCredential(item) }
+                Menu {
+                    Button { onCopyAsCode(item) } label: { Label(L10n.t("row.code"), systemImage: "chevron.left.forwardslash.chevron.right") }
+                    Button { onCopyMarkdown(item) } label: { Label(L10n.t("row.markdown"), systemImage: "doc.richtext") }
+                    Button { onSaveAsFile(item) } label: { Label(L10n.t("row.savefile"), systemImage: "square.and.arrow.down") }
+                    Divider()
+                    Button { manager.toggleCredential(item) } label: { Label(L10n.t("row.markcred"), systemImage: "key") }
+                } label: { Image(systemName: "ellipsis.circle").font(.system(size: 12)) }
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help(L10n.t("act.more"))
             }
             iconButton("pencil", L10n.t("row.rename")) { onRename(item) }
             iconButton(item.pinned ? "pin.slash" : "pin", L10n.t(item.pinned ? "row.unpin" : "row.pin")) {

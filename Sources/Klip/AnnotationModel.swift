@@ -32,7 +32,7 @@ enum SnapTool: String, CaseIterable {
 
 /// Una anotación dibujable. `points` guarda el trazo libre (lápiz/marcador); para formas se usan
 /// el primer y último punto; el texto guarda su cadena y su origen.
-struct Annotation {
+struct SnapAnnotation {
     var id = UUID()
     var tool: SnapTool
     var color: NSColor

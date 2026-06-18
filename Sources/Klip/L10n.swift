@@ -86,6 +86,7 @@ enum L10n {
         "common.ok": "Aceptar",
         "collection.add.title": "Añadir a colección",
         "collection.add.info": "Nombre de la colección (déjalo vacío para quitar de su colección).",
+        "capture.hint": "Arrastra para seleccionar una zona  ·  Esc para cancelar",
         "badge.remote": "Otro dispositivo"
     ]
 
@@ -166,6 +167,7 @@ enum L10n {
         "common.ok": "OK",
         "collection.add.title": "Add to collection",
         "collection.add.info": "Collection name (leave empty to remove from its collection).",
+        "capture.hint": "Drag to select an area  ·  Esc to cancel",
         "badge.remote": "Other device"
     ]
 }

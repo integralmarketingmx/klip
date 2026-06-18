@@ -44,7 +44,7 @@ El "vibe coding" es un ir y venir constante de copiar y pegar entre tu editor y 
 - **Fecha legible** en cada elemento: *"martes 04 de julio · 10:43"*, *"Hoy"*, *"Ayer"*.
 
 ### 📸 Captura + anotación nativa (Klip Snap)
-- Atajo global **`⌘⇧2`** → recorta una región de la pantalla (selección con el ratón sobre un *freeze-frame* atenuado, con badge de dimensiones en vivo y escala Retina correcta). Usa **ScreenCaptureKit** (no la API deprecada).
+- Atajo global **`⌘⇧U`** → recorta una región de la pantalla (selección con el ratón sobre un *freeze-frame* atenuado, con badge de dimensiones en vivo y escala Retina correcta). Usa **ScreenCaptureKit** (no la API deprecada).
 - **Editor de anotación** integrado: lápiz, línea, **flecha**, rectángulo, elipse, marcador, **texto editable/movible/redimensionable**, color, grosor y **deshacer**.
 - Al terminar, la captura anotada entra al **historial** (queda lista para **OCR** y búsqueda) y al portapapeles.
 - También desde el botón 📷 del panel o el menú de la barra de estado.
@@ -91,14 +91,14 @@ El "vibe coding" es un ir y venir constante de copiar y pegar entre tu editor y 
 |---|---|
 | `⌘⇧E` | Abrir el panel del historial |
 | `⌘⇧I` | Grabar / detener una nota de voz |
-| `⌘⇧2` | **Capturar y anotar** una región (Klip Snap) |
+| `⌘⇧U` | **Capturar y anotar** una región (Klip Snap) |
 | `↑` / `↓` · `Enter` | Navegar y elegir un elemento |
 | `⌘1`–`⌘9` | Elegir (y pegar) el elemento Nº 1–9 |
 | `Esc` | Cerrar el panel |
 | `⌘⇧⌃4` | *(de macOS)* captura al portapapeles → también entra a Klip |
 
-> Los tres atajos globales (`⌘⇧E`, `⌘⇧I`, `⌘⇧2`) son **configurables** en Preferencias › Atajos.
-> `⌘⇧2` se eligió por no chocar con las capturas del sistema (`⌘⇧3`/`4`/`5`).
+> Los tres atajos globales (`⌘⇧E`, `⌘⇧I`, `⌘⇧U`) son **configurables** en Preferencias › Atajos.
+> Se usa una **letra** (`U`) y no un número: `⌘⇧2` lo secuestraban otras apps (p. ej. Loom), y `⌘⇧3`/`4`/`5` son las capturas del sistema.
 
 ## 🧰 Requisitos
 
@@ -122,7 +122,7 @@ Verás el icono 📋 en la barra de menú. Pulsa **`⌘⇧E`** para abrir el his
 
 > La primera vez, `install.sh` crea un **certificado de firma local** (`Klip Code Signing`) en tu Llavero para que la firma sea estable. Así macOS te pide los permisos (micrófono, accesibilidad, grabación de pantalla) **una sola vez** y los recuerda entre actualizaciones, en lugar de volver a preguntar en cada reinstalación. Es local y reversible (puedes borrarlo desde *Acceso a Llaveros*).
 >
-> macOS puede pedir aprobar el "ítem de inicio de sesión" en *Ajustes › General*. Para el **pegado automático**, concede Accesibilidad cuando se solicite (menú de Klip → *Activar pegado automático…*). La primera captura con `⌘⇧2` pedirá **Grabación de pantalla**.
+> macOS puede pedir aprobar el "ítem de inicio de sesión" en *Ajustes › General*. Para el **pegado automático**, concede Accesibilidad cuando se solicite (menú de Klip → *Activar pegado automático…*). La primera captura con `⌘⇧U` pedirá **Grabación de pantalla**.
 
 ### Compilar sin instalar
 
@@ -143,7 +143,7 @@ swift run Klip    # ejecuta directamente
 1. **Copia lo que sea** mientras programas (código, salida de terminal, un mensaje de error). Todo queda en Klip.
 2. **`⌘⇧E`** → abre el panel. Escribe para **buscar**; usa **↑/↓ + Enter** o haz **clic** para elegir un elemento (se pega solo si activaste el pegado automático).
 3. Para pegar código en un chat de IA, pasa el cursor sobre la fila y pulsa **`</>`** (*copiar como bloque de código*).
-4. **`⌘⇧2`** → recorta el error/UI de la pantalla, anótalo (flecha + texto) y entra a Klip. Pásale el cursor y pulsa **OCR** si quieres su texto.
+4. **`⌘⇧U`** → recorta el error/UI de la pantalla, anótalo (flecha + texto) y entra a Klip. Pásale el cursor y pulsa **OCR** si quieres su texto.
 5. 🎙️ **`⌘⇧I`** para dictar un prompt; al detener, se transcribe y entra al historial.
 6. ☑️ Activa la **multi-selección** del encabezado, marca varias capturas/textos y pulsa **PDF** o **ZIP** para subirlos de una vez como contexto a la IA.
 7. `Esc` o clic fuera cierra el panel.

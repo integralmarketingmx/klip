@@ -93,7 +93,10 @@ private final class CaptureOverlayView: NSView {
         NSColor.black.withAlphaComponent(0.45).setFill()
         bounds.fill()
 
-        guard currentRect.width > 0, currentRect.height > 0 else { return }
+        guard currentRect.width > 0, currentRect.height > 0 else {
+            drawHint()   // aún no hay selección: explicar qué hacer
+            return
+        }
 
         // "Agujero": vuelve a pintar la zona seleccionada sin atenuar.
         bgImage.draw(in: currentRect, from: pixelSourceRect(for: currentRect), operation: .copy, fraction: 1)
@@ -109,6 +112,23 @@ private final class CaptureOverlayView: NSView {
 
     /// Rect fuente (en puntos de la imagen, origen abajo-izquierda) correspondiente a la zona de la vista.
     private func pixelSourceRect(for rect: NSRect) -> NSRect { rect }
+
+    /// Indicación centrada mientras el usuario aún no ha arrastrado nada (para que el overlay se entienda).
+    private func drawHint() {
+        let text = L10n.t("capture.hint")
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 14, weight: .semibold),
+            .foregroundColor: NSColor.white
+        ]
+        let size = (text as NSString).size(withAttributes: attrs)
+        let padX: CGFloat = 18, padY: CGFloat = 11
+        let pill = NSRect(x: bounds.midX - (size.width + padX * 2) / 2,
+                          y: bounds.midY - (size.height + padY * 2) / 2,
+                          width: size.width + padX * 2, height: size.height + padY * 2)
+        NSColor.black.withAlphaComponent(0.7).setFill()
+        NSBezierPath(roundedRect: pill, xRadius: 11, yRadius: 11).fill()
+        (text as NSString).draw(at: NSPoint(x: pill.minX + padX, y: pill.minY + padY), withAttributes: attrs)
+    }
 
     private func drawDimensionBadge(for rect: NSRect) {
         let wPx = Int(rect.width * shot.scale)

@@ -22,9 +22,13 @@ struct KeyCombo: Equatable {
     /// Atajo de voz por defecto: ⌘⇧I (Cmd+Shift+I).
     static let defaultVoiceCombo = KeyCombo(keyCode: UInt32(kVK_ANSI_I),
                                             carbonModifiers: UInt32(cmdKey | shiftKey))
-    /// Atajo de captura por defecto: ⌘⇧2 (Cmd+Shift+2).
-    static let defaultCaptureCombo = KeyCombo(keyCode: UInt32(kVK_ANSI_2),
+    /// Atajo de captura por defecto: ⌘⇧U (Cmd+Shift+U). Letra (no número) para no chocar con apps que
+    /// secuestran ⌘⇧2 (p. ej. Loom) y para acompañar a ⌘⇧E / ⌘⇧I.
+    static let defaultCaptureCombo = KeyCombo(keyCode: UInt32(kVK_ANSI_U),
                                               carbonModifiers: UInt32(cmdKey | shiftKey))
+    /// Antiguo default de captura (⌘⇧2), usado solo para migrar a ⌘⇧U a quien lo tenga persistido.
+    static let legacyCaptureCombo = KeyCombo(keyCode: UInt32(kVK_ANSI_2),
+                                             carbonModifiers: UInt32(cmdKey | shiftKey))
 
     var isValid: Bool { carbonModifiers != 0 }
 
@@ -65,9 +69,9 @@ struct KeyCombo: Equatable {
     static let suggestions: [KeyCombo] = [
         KeyCombo(keyCode: UInt32(kVK_ANSI_E), carbonModifiers: UInt32(cmdKey | shiftKey)),   // ⌘⇧E
         KeyCombo(keyCode: UInt32(kVK_ANSI_I), carbonModifiers: UInt32(cmdKey | shiftKey)),   // ⌘⇧I
+        KeyCombo(keyCode: UInt32(kVK_ANSI_U), carbonModifiers: UInt32(cmdKey | shiftKey)),   // ⌘⇧U (captura)
         KeyCombo(keyCode: UInt32(kVK_ANSI_Y), carbonModifiers: UInt32(cmdKey | shiftKey)),   // ⌘⇧Y
         KeyCombo(keyCode: UInt32(kVK_ANSI_M), carbonModifiers: UInt32(cmdKey | shiftKey)),   // ⌘⇧M
-        KeyCombo(keyCode: UInt32(kVK_ANSI_2), carbonModifiers: UInt32(cmdKey | shiftKey)),   // ⌘⇧2 (captura)
         KeyCombo(keyCode: UInt32(kVK_Space),  carbonModifiers: UInt32(optionKey)),           // ⌥Espacio
         KeyCombo(keyCode: UInt32(kVK_Space),  carbonModifiers: UInt32(optionKey | shiftKey)) // ⌥⇧Espacio
     ]
@@ -162,7 +166,7 @@ final class Settings: ObservableObject {
             K.aiProv: "openai",
             K.keyCode2: Int(kVK_ANSI_I),
             K.mods2: Int(cmdKey | shiftKey),
-            K.keyCode3: Int(kVK_ANSI_2),
+            K.keyCode3: Int(kVK_ANSI_U),
             K.mods3: Int(cmdKey | shiftKey),
             K.uiLang: "es"
         ])
@@ -185,6 +189,14 @@ final class Settings: ObservableObject {
         captureCombo = KeyCombo(keyCode: UInt32(d.integer(forKey: K.keyCode3)),
                                 carbonModifiers: UInt32(d.integer(forKey: K.mods3)))
         uiLanguage = d.string(forKey: K.uiLang) ?? "es"
+
+        // Migración única: el default de captura pasó de ⌘⇧2 a ⌘⇧U (⌘⇧2 lo secuestraban apps como Loom).
+        // A quien siga con el viejo ⌘⇧2 persistido, moverlo a ⌘⇧U. Si el usuario eligió otro atajo, respetarlo.
+        let migCaptureKey = "migratedCaptureToU"
+        if !d.bool(forKey: migCaptureKey) {
+            if captureCombo == KeyCombo.legacyCaptureCombo { captureCombo = KeyCombo.defaultCaptureCombo }
+            d.set(true, forKey: migCaptureKey)
+        }
     }
 
     func addExcludedApp(_ id: String) {

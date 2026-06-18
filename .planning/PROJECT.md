@@ -27,13 +27,13 @@ Añadir captura de pantalla con anotación al estilo Lightshot que alimenta el h
 
 ### Active
 
-<!-- Scope del milestone v0.5 -->
+<!-- Scope del milestone v0.5 — implementado y desplegado; pendiente validación humana del flujo en vivo -->
 
-- [ ] Captura de región de pantalla con overlay "freeze-frame" y badge de dimensiones en vivo (`⌘⇧2`, configurable)
-- [ ] Editor de anotaciones: lápiz, línea, flecha, rectángulo, elipse, marcador, texto, color, grosor, deshacer
-- [ ] Copiar/Guardar la captura anotada → entra al historial persistente de Klip (con OCR y búsqueda)
-- [ ] Gestión del permiso TCC de Grabación de pantalla (verificación + onboarding)
-- [ ] Selector de modelo de Google Gemini en Preferencias (hoy fijo en `gemini-flash-latest`)
+- [x] Captura de región de pantalla con overlay "freeze-frame" y badge de dimensiones en vivo (`⌘⇧2`, configurable)
+- [x] Editor de anotaciones: lápiz, línea, flecha, rectángulo, elipse, marcador, texto, color, grosor, deshacer
+- [x] Copiar/Guardar la captura anotada → entra al historial persistente de Klip (con OCR y búsqueda)
+- [x] Gestión del permiso TCC de Grabación de pantalla (verificación + onboarding)
+- [x] Selector de modelo de Google Gemini en Preferencias (antes fijo en `gemini-flash-latest`)
 
 ### Out of Scope
 

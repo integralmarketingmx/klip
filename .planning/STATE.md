@@ -5,16 +5,22 @@
 See: .planning/PROJECT.md (updated 2026-06-17)
 
 **Core value:** Todo lo que copias (o capturas) queda persistente y buscable, a un atajo de distancia, sin salir de tu Mac.
-**Current focus:** Phase 1 — Selector de modelo Gemini
+**Current focus:** Milestone v0.5 implementado — desplegado vía install.sh
 
 ## Current Position
 
-Phase: 1 of 4 (Selector de modelo Gemini)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-06-17 — ROADMAP.md creado para milestone v0.5 (4 fases, 18/18 requisitos mapeados)
+Phase: 4 of 4 completas (Selector Gemini · Captura+TCC · Editor · Integración historial)
+Plan: implementación autónoma (sin descomposición en sub-planes; código directo + review de agente)
+Status: Implementado, compila (swift build OK), desplegado en /Applications vía install.sh
+Last activity: 2026-06-17 — 4 fases implementadas, code review aplicado (4 fixes), deploy
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██████████] 100% (implementación) — pendiente validación humana del flujo de captura en vivo
+
+### Validación humana pendiente (requiere interacción del usuario)
+- Conceder permiso de Grabación de pantalla a Klip la primera vez (⌘⇧2)
+- Probar selección en monitor interno (Retina) y externo
+- Confirmar texto con acentos (ñ/á) en el editor
+- Verificar que la captura entra al historial y el OCR la indexa
 
 ## Performance Metrics
 

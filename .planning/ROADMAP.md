@@ -12,10 +12,10 @@ Este milestone evoluciona Klip de un gestor de portapapeles a una herramienta de
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Selector de modelo Gemini** - Picker de modelo en Preferencias, persistido y consumido por GeminiClient
-- [ ] **Phase 2: Captura de región + permiso TCC** - Overlay freeze-frame multi-monitor/Retina vía ScreenCaptureKit con gating de permiso
-- [ ] **Phase 3: Editor de anotaciones** - NSView custom con 7 herramientas, texto con acentos, color/grosor, undo, copiar/guardar
-- [ ] **Phase 4: Integración con historial + pulido de demo** - Captura anotada entra al historial persistente con OCR/búsqueda y feedback al copiar
+- [x] **Phase 1: Selector de modelo Gemini** - Picker de modelo en Preferencias, persistido y consumido por GeminiClient ✅
+- [x] **Phase 2: Captura de región + permiso TCC** - Overlay freeze-frame multi-monitor/Retina vía ScreenCaptureKit con gating de permiso ✅
+- [x] **Phase 3: Editor de anotaciones** - NSView custom con 7 herramientas, texto con acentos, color/grosor, undo, copiar/guardar ✅
+- [x] **Phase 4: Integración con historial + pulido de demo** - Captura anotada entra al historial persistente con OCR/búsqueda y feedback al copiar ✅
 
 ## Phase Details
 

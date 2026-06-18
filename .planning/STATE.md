@@ -73,5 +73,12 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-06-17
-Stopped at: ROADMAP.md y STATE.md creados; traceability confirmada
+Stopped at: Milestone v0.5 implementado (4 fases), compilado y DESPLEGADO en /Applications/Klip.app (Klip activo).
 Resume file: None
+
+### Nota de deploy (firma)
+La firma con la identidad estable `Klip Code Signing` se cuelga al acceder a la clave del Llavero
+en segundo plano (prompt invisible "Permitir"). Se desplegó con **firma ad-hoc** válida para dejar
+Klip corriendo. Para recuperar la firma estable (TCC recuerda el permiso entre reinstalaciones),
+ejecutar `install.sh` de forma INTERACTIVA (terminal del usuario) y pulsar "Permitir" en el prompt
+del Llavero, o ejecutar una vez `security set-key-partition-list` para autorizar a codesign sin prompt.

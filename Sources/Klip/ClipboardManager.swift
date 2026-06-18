@@ -156,6 +156,26 @@ final class ClipboardManager: ObservableObject {
         trimAndSave()
     }
 
+    /// Inserta una captura anotada (Klip Snap) en el historial persistente y, opcionalmente, la deja
+    /// en el portapapeles. Análogo público a `addImage`, pero para imágenes generadas por la app
+    /// (no capturadas del pasteboard). Queda disponible para OCR y búsqueda como cualquier imagen.
+    @discardableResult
+    func addAnnotatedScreenshot(_ image: NSImage, copyToClipboard: Bool = true) -> UUID {
+        let fileName = "\(UUID().uuidString).png"
+        storage.saveImage(image, fileName: fileName)
+        let size = image.size
+        let preview = "Captura · \(Int(size.width))×\(Int(size.height))"
+        let item = ClipboardItem(kind: .image, imageFileName: fileName, preview: preview)
+        items.insert(item, at: 0)
+        trimAndSave()
+        if copyToClipboard {
+            let pb = NSPasteboard.general
+            pb.clearContents(); pb.writeObjects([image])
+            lastChangeCount = pb.changeCount   // ya está en el historial: no re-capturar como item nuevo
+        }
+        return item.id
+    }
+
     // MARK: - Notas de voz (audio guardado + transcripción en 3 pasos)
 
     static let voiceTranscribing = "🎙 Transcribiendo…"

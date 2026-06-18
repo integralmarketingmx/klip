@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }()
     private let manager = ClipboardManager()
     private var panelController: PanelController!
+    private var snapController: SnapController!
     private var hotKey: HotKey?
     private var voiceHotKey: HotKey?
     private var captureHotKey: HotKey?
@@ -28,13 +29,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             button.image = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "Klip")?
                 .withSymbolConfiguration(cfg)
         }
+        installMainMenu()
         buildMenu()
         panelController = PanelController(manager: manager, statusItem: statusItem)
         panelController.onOpenPreferences = { [weak self] in self?.openPreferences() }
+        snapController = SnapController(manager: manager)
+        snapController.onCaptured = { [weak self] in self?.panelController.show() }
+        panelController.onCaptureAnnotate = { [weak self] in self?.snapController.start() }
         manager.start()
         setupHotKeys()
         maybeEnableLoginOnce()
         Settings.shared.$uiLanguage.dropFirst().sink { [weak self] _ in self?.buildMenu() }.store(in: &cancellables)
+    }
+
+    // Una app accesoria (.accessory) no tiene menú principal, así que los campos de texto de
+    // SwiftUI no reciben ⌘X/⌘C/⌘V/⌘A (no hay menú "Editar" que enrute esos atajos por la
+    // cadena de responders). Instalamos un menú principal mínimo con un menú Editar estándar.
+    private func installMainMenu() {
+        let mainMenu = NSMenu()
+
+        // Menú de la app (necesario para que el menú Editar aparezca como segundo).
+        let appMenuItem = NSMenuItem()
+        mainMenu.addItem(appMenuItem)
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: L10n.t("menu.quit"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenuItem.submenu = appMenu
+
+        // Menú Editar con los atajos estándar (target nil → cadena de responders).
+        let editMenuItem = NSMenuItem()
+        mainMenu.addItem(editMenuItem)
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenuItem.submenu = editMenu
+
+        NSApp.mainMenu = mainMenu
     }
 
     private func buildMenu() {
@@ -43,9 +74,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                      action: #selector(showPanel), keyEquivalent: "")
         menu.addItem(withTitle: "\(L10n.t("rec.record"))   \(Settings.shared.voiceCombo.displayString)",
                      action: #selector(startVoice), keyEquivalent: "")
-        menu.addItem(withTitle: "\(L10n.t("capture.annotate"))   \(Settings.shared.captureCombo.displayString)",
-                     action: #selector(captureAnnotate), keyEquivalent: "")
-        menu.addItem(withTitle: L10n.t("capture.full"), action: #selector(captureAnnotateFull), keyEquivalent: "")
+        menu.addItem(withTitle: "\(L10n.t("menu.capture"))   \(Settings.shared.captureCombo.displayString)",
+                     action: #selector(startCapture), keyEquivalent: "")
         menu.addItem(.separator())
         let recents = NSMenuItem(title: "Recientes", action: nil, keyEquivalent: "")
         recentsMenu.delegate = self
@@ -82,7 +112,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     private func makeCaptureHotKey(_ c: KeyCombo) {
         captureHotKey = HotKey(keyCode: c.keyCode, modifiers: c.carbonModifiers, id: 3) { [weak self] in
-            self?.panelController.captureAndAnnotate(fullScreen: false)
+            self?.snapController.start()
         }
     }
 
@@ -182,8 +212,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func showPanel() { panelController.show() }
     @objc private func startVoice() { panelController.toggleVoiceRecording() }
-    @objc private func captureAnnotate() { panelController.captureAndAnnotate(fullScreen: false) }
-    @objc private func captureAnnotateFull() { panelController.captureAndAnnotate(fullScreen: true) }
+    @objc private func startCapture() { snapController.start() }
     @objc private func showGuideMenu() { panelController.showGuide() }
 
     @objc private func openPreferences() {

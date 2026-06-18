@@ -33,14 +33,26 @@ enum SnapTool: String, CaseIterable {
 /// Una anotación dibujable. `points` guarda el trazo libre (lápiz/marcador); para formas se usan
 /// el primer y último punto; el texto guarda su cadena y su origen.
 struct Annotation {
+    var id = UUID()
     var tool: SnapTool
     var color: NSColor
     var lineWidth: CGFloat
     var points: [CGPoint]
     var text: String?
+    var fontSize: CGFloat = 20   // solo para .text
 
     var start: CGPoint { points.first ?? .zero }
     var end: CGPoint { points.last ?? .zero }
+
+    var textFont: NSFont { NSFont.systemFont(ofSize: fontSize, weight: .semibold) }
+
+    /// Rectángulo que ocupa el texto (para selección/hit-testing/mover). nil si no es texto.
+    func textBounds() -> CGRect? {
+        guard tool == .text, let text, !text.isEmpty else { return nil }
+        let size = (text as NSString).size(withAttributes: [.font: textFont])
+        let o = points.first ?? .zero
+        return CGRect(x: o.x, y: o.y, width: size.width, height: size.height)
+    }
 
     /// Dibuja la anotación en el contexto actual (coordenadas de la vista, no flipped).
     func draw() {
@@ -63,7 +75,7 @@ struct Annotation {
         case .text:
             guard let text, !text.isEmpty else { return }
             let attrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: max(14, lineWidth * 7), weight: .semibold),
+                .font: textFont,
                 .foregroundColor: color
             ]
             (text as NSString).draw(at: start, withAttributes: attrs)

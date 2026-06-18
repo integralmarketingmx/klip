@@ -101,7 +101,17 @@ final class SnapEditorController: NSObject, NSWindowDelegate {
         let widths = NSSegmentedControl(labels: ["S", "M", "L"], trackingMode: .selectOne,
                                         target: self, action: #selector(widthChanged(_:)))
         widths.selectedSegment = 1
+        widths.toolTip = "Grosor del trazo"
         leading.addArrangedSubview(widths)
+
+        // Tamaño de texto (afecta al texto seleccionado o al próximo que escribas).
+        let smaller = makeActionButton(symbol: "textformat.size.smaller", tip: "Texto más chico", action: #selector(textSmaller))
+        let larger = makeActionButton(symbol: "textformat.size.larger", tip: "Texto más grande", action: #selector(textLarger))
+        for b in [smaller, larger] {
+            b.translatesAutoresizingMaskIntoConstraints = false
+            b.widthAnchor.constraint(equalToConstant: size).isActive = true
+            leading.addArrangedSubview(b)
+        }
 
         let undo = makeActionButton(symbol: "arrow.uturn.backward", tip: "Deshacer (⌘Z)", action: #selector(undoTapped))
         undo.keyEquivalent = "z"; undo.keyEquivalentModifierMask = [.command]
@@ -168,11 +178,14 @@ final class SnapEditorController: NSObject, NSWindowDelegate {
         for (t, b) in toolButtons { b.state = (t == tool) ? .on : .off }
     }
 
-    @objc private func colorChanged(_ sender: NSColorWell) { canvas.currentColor = sender.color }
+    @objc private func colorChanged(_ sender: NSColorWell) { canvas.setColor(sender.color) }
 
     @objc private func widthChanged(_ sender: NSSegmentedControl) {
         canvas.currentLineWidth = [2.0, 3.0, 6.0][max(0, min(2, sender.selectedSegment))]
     }
+
+    @objc private func textSmaller() { canvas.bumpFontSize(-4) }
+    @objc private func textLarger() { canvas.bumpFontSize(+4) }
 
     @objc private func undoTapped() { canvas.undo() }
 

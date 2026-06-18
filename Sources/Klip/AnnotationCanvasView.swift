@@ -1,16 +1,29 @@
 import AppKit
 
 /// Lienzo del editor: dibuja la captura base y las anotaciones encima. Maneja el dibujo en vivo,
-/// el texto in-place (NSTextField temporal — soporta acentos), el undo y el aplanado a imagen.
+/// el texto in-place (NSTextField temporal — soporta acentos), y para el texto: selección, mover,
+/// reeditar y cambiar tamaño. Aplana todo a imagen a resolución completa.
 final class AnnotationCanvasView: NSView {
     private let baseImage: NSImage
     private(set) var annotations: [Annotation] = []
     private var draft: Annotation?
+
+    // Texto in-place / selección.
     private var activeTextField: NSTextField?
+    private var editingID: UUID?              // anotación de texto que se está reeditando
+    private var editFontSize: CGFloat = 20
+    private var editColor: NSColor = .systemRed
+    private(set) var selectedTextID: UUID?    // texto seleccionado (caja resaltada)
+    private var movingTextID: UUID?           // texto que se está arrastrando
+    private var moveOffset = CGSize.zero
 
     var currentTool: SnapTool = .arrow
     var currentColor: NSColor = .systemRed
     var currentLineWidth: CGFloat = 3
+    var currentFontSize: CGFloat = 20
+
+    /// Notifica cambios de selección (para que la toolbar refleje el tamaño del texto elegido).
+    var onSelectionChange: (() -> Void)?
 
     init(image: NSImage) {
         self.baseImage = image
@@ -25,36 +38,85 @@ final class AnnotationCanvasView: NSView {
         baseImage.draw(in: bounds, from: .zero, operation: .copy, fraction: 1)
         for a in annotations { a.draw() }
         draft?.draw()
+        drawSelectionHighlight()
     }
 
-    // MARK: - Ratón / dibujo
+    private func drawSelectionHighlight() {
+        guard let id = selectedTextID,
+              let ann = annotations.first(where: { $0.id == id }),
+              let box = ann.textBounds()?.insetBy(dx: -4, dy: -4) else { return }
+        NSColor.controlAccentColor.setStroke()
+        let path = NSBezierPath(rect: box)
+        path.lineWidth = 1
+        path.setLineDash([4, 3], count: 2, phase: 0)
+        path.stroke()
+    }
+
+    // MARK: - Ratón
 
     override func mouseDown(with event: NSEvent) {
-        commitActiveText()
         let p = convert(event.locationInWindow, from: nil)
+
         if currentTool == .text {
-            beginTextEditing(at: p)
+            commitActiveText()
+            // ¿Click sobre un texto existente? (de arriba hacia abajo)
+            if let idx = annotations.lastIndex(where: {
+                $0.tool == .text && ($0.textBounds()?.insetBy(dx: -6, dy: -6).contains(p) ?? false)
+            }) {
+                let ann = annotations[idx]
+                if event.clickCount >= 2 {
+                    // Doble clic → reeditar.
+                    annotations.remove(at: idx)
+                    editingID = ann.id
+                    selectedTextID = nil
+                    beginTextEditing(at: ann.start, existing: ann)
+                } else {
+                    // Clic simple → seleccionar y preparar arrastre.
+                    selectedTextID = ann.id
+                    movingTextID = ann.id
+                    moveOffset = CGSize(width: p.x - ann.start.x, height: p.y - ann.start.y)
+                    onSelectionChange?()
+                }
+                needsDisplay = true
+                return
+            }
+            // Espacio vacío → nuevo texto.
+            selectedTextID = nil
+            beginTextEditing(at: p, existing: nil)
+            needsDisplay = true
             return
         }
+
+        // Herramientas de dibujo.
+        selectedTextID = nil
+        commitActiveText()
         draft = Annotation(tool: currentTool, color: currentColor,
                            lineWidth: currentLineWidth, points: [p], text: nil)
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard var d = draft else { return }
         let p = convert(event.locationInWindow, from: nil)
+
+        // Mover un texto seleccionado.
+        if let movingID = movingTextID, let idx = annotations.firstIndex(where: { $0.id == movingID }) {
+            annotations[idx].points = [CGPoint(x: p.x - moveOffset.width, y: p.y - moveOffset.height)]
+            needsDisplay = true
+            return
+        }
+
+        guard var d = draft else { return }
         if d.tool == .pencil || d.tool == .marker {
             d.points.append(p)
         } else {
-            d.points = [d.points.first ?? p, p]   // formas: start + actual
+            d.points = [d.points.first ?? p, p]
         }
         draft = d
         needsDisplay = true
     }
 
     override func mouseUp(with event: NSEvent) {
+        if movingTextID != nil { movingTextID = nil; return }
         guard let d = draft else { return }
-        // Descarta trazos/forma de tamaño cero.
         if d.points.count > 1 || d.tool == .pencil || d.tool == .marker {
             annotations.append(d)
         }
@@ -64,20 +126,31 @@ final class AnnotationCanvasView: NSView {
 
     // MARK: - Texto in-place
 
-    private func beginTextEditing(at point: NSPoint) {
-        let field = NSTextField(frame: NSRect(x: point.x, y: point.y - 10, width: 200, height: 24))
+    private func beginTextEditing(at point: NSPoint, existing: Annotation?) {
+        let fontSize = existing?.fontSize ?? currentFontSize
+        let color = existing?.color ?? currentColor
+        let font = NSFont.systemFont(ofSize: fontSize, weight: .semibold)
+        let lineHeight = font.ascender - font.descender
+        let fieldHeight = max(24, lineHeight + 8)
+        // Posiciona el campo de modo que, al confirmar, el texto dibujado caiga en `point`.
+        let field = NSTextField(frame: NSRect(x: point.x - 4,
+                                              y: point.y - (fieldHeight - lineHeight) / 2,
+                                              width: 260, height: fieldHeight))
         field.isBordered = true
         field.bezelStyle = .roundedBezel
-        field.backgroundColor = .white.withAlphaComponent(0.9)
-        field.font = NSFont.systemFont(ofSize: max(14, currentLineWidth * 7), weight: .semibold)
-        field.textColor = currentColor
+        field.backgroundColor = .white.withAlphaComponent(0.92)
+        field.font = font
+        field.textColor = color
         field.focusRingType = .none
         field.placeholderString = "Escribe…"
+        field.stringValue = existing?.text ?? ""
         field.target = self
         field.action = #selector(textFieldCommitted(_:))
         addSubview(field)
         window?.makeFirstResponder(field)
         activeTextField = field
+        editFontSize = fontSize
+        editColor = color
     }
 
     @objc private func textFieldCommitted(_ sender: NSTextField) { commitActiveText() }
@@ -86,32 +159,75 @@ final class AnnotationCanvasView: NSView {
         guard let field = activeTextField else { return }
         let text = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let frame = field.frame
-        let font = field.font ?? NSFont.systemFont(ofSize: 14, weight: .semibold)
+        let font = field.font ?? NSFont.systemFont(ofSize: editFontSize, weight: .semibold)
+        let id = editingID
         activeTextField = nil
+        editingID = nil
         field.removeFromSuperview()
-        guard !text.isEmpty else { return }
-        // El texto del NSTextField queda centrado verticalmente y con un inset del bezel (~4px).
-        // Alineamos el origen de dibujo (borde inferior del glifo) para que coincida al confirmar.
+        guard !text.isEmpty else { needsDisplay = true; return }
         let lineHeight = font.ascender - font.descender
         let drawY = frame.minY + (frame.height - lineHeight) / 2
-        annotations.append(Annotation(tool: .text, color: currentColor,
-                                      lineWidth: currentLineWidth,
-                                      points: [CGPoint(x: frame.minX + 4, y: drawY)], text: text))
+        let origin = CGPoint(x: frame.minX + 4, y: drawY)
+        var ann = Annotation(tool: .text, color: editColor, lineWidth: currentLineWidth,
+                             points: [origin], text: text, fontSize: editFontSize)
+        if let id { ann.id = id }   // conserva la identidad al reeditar
+        annotations.append(ann)
+        selectedTextID = ann.id
+        onSelectionChange?()
+        needsDisplay = true
+    }
+
+    // MARK: - Tamaño de fuente
+
+    /// Tamaño efectivo a mostrar en la toolbar: el del texto seleccionado, o el actual.
+    var effectiveFontSize: CGFloat {
+        if let id = selectedTextID, let a = annotations.first(where: { $0.id == id }) { return a.fontSize }
+        return currentFontSize
+    }
+
+    /// Aplica un nuevo tamaño: al texto seleccionado (si lo hay) y como tamaño por defecto para el próximo.
+    func setFontSize(_ size: CGFloat) {
+        let clamped = max(10, min(120, size))
+        currentFontSize = clamped
+        if let field = activeTextField {
+            field.font = NSFont.systemFont(ofSize: clamped, weight: .semibold)
+            editFontSize = clamped
+        }
+        if let id = selectedTextID, let idx = annotations.firstIndex(where: { $0.id == id }) {
+            annotations[idx].fontSize = clamped
+        }
+        needsDisplay = true
+    }
+
+    func bumpFontSize(_ delta: CGFloat) { setFontSize(effectiveFontSize + delta) }
+
+    /// Fija el color actual y, si hay texto seleccionado o en edición, lo recolorea.
+    func setColor(_ color: NSColor) {
+        currentColor = color
+        if let field = activeTextField { field.textColor = color; editColor = color }
+        if let id = selectedTextID, let idx = annotations.firstIndex(where: { $0.id == id }) {
+            annotations[idx].color = color
+        }
         needsDisplay = true
     }
 
     // MARK: - Acciones
 
     func undo() {
-        if activeTextField != nil { activeTextField?.removeFromSuperview(); activeTextField = nil; return }
+        if activeTextField != nil { activeTextField?.removeFromSuperview(); activeTextField = nil; editingID = nil; return }
         guard !annotations.isEmpty else { return }
         annotations.removeLast()
+        selectedTextID = nil
         needsDisplay = true
     }
 
     /// Aplana base + anotaciones a un NSImage a resolución de píxeles completa (Retina).
     func flattened() -> NSImage {
         commitActiveText()
+        let savedSelection = selectedTextID
+        selectedTextID = nil   // no rasterizar la caja de selección
+        defer { selectedTextID = savedSelection }
+
         let pxW = baseImage.representations.first?.pixelsWide ?? Int(bounds.width)
         let pxH = baseImage.representations.first?.pixelsHigh ?? Int(bounds.height)
         guard pxW > 0, pxH > 0,

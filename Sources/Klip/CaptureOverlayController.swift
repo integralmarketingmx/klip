@@ -125,7 +125,7 @@ private final class CaptureOverlayView: NSView {
         // Si no cabe arriba, colócalo dentro/abajo.
         if badge.maxY > bounds.maxY { badge.origin.y = rect.minY - badge.height - 6 }
         if badge.minY < bounds.minY { badge.origin.y = rect.minY + 6 }
-        badge.origin.x = min(badge.origin.x, bounds.maxX - badge.width)
+        badge.origin.x = max(bounds.minX, min(badge.origin.x, bounds.maxX - badge.width))
 
         NSColor.black.withAlphaComponent(0.75).setFill()
         NSBezierPath(roundedRect: badge, xRadius: 4, yRadius: 4).fill()

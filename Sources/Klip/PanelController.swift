@@ -107,7 +107,10 @@ final class PanelController: NSObject, NSWindowDelegate {
         self.panel = panel
     }
 
-    func toggle() { panel.isVisible ? hide() : show() }
+    func toggle() {
+        if isModalActive { return }   // no abrir/cerrar el panel con una hoja de guardar/exportar abierta detrás
+        panel.isVisible ? hide() : show()
+    }
 
     func show() {
         guard !panel.isVisible else { return }   // idempotente: evita reinstalar monitores
@@ -364,9 +367,9 @@ final class PanelController: NSObject, NSWindowDelegate {
     func assignSelectedToCollection(_ items: [ClipboardItem]) {
         guard !items.isEmpty else { return }
         let alert = NSAlert()
-        alert.messageText = "Añadir a colección"
-        alert.informativeText = "Nombre de la colección (déjalo vacío para quitar de su colección)."
-        alert.addButton(withTitle: "Aceptar")
+        alert.messageText = L10n.t("collection.add.title")
+        alert.informativeText = L10n.t("collection.add.info")
+        alert.addButton(withTitle: L10n.t("common.ok"))
         let cancel = alert.addButton(withTitle: L10n.t("common.cancel")); cancel.keyEquivalent = "\u{1b}"
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
         // Precargar solo si TODOS comparten la misma colección; si difieren, dejar vacío (no sobreescribir
@@ -421,10 +424,12 @@ final class PanelController: NSObject, NSWindowDelegate {
             host.frame = fx.bounds; host.autoresizingMask = [.width, .height]; fx.addSubview(host)
             p.contentView = fx
             recordingPanel = p
-        }
-        if let screen = NSScreen.main, let p = recordingPanel {
-            let vf = screen.visibleFrame; let s = p.frame.size
-            p.setFrameOrigin(NSPoint(x: vf.midX - s.width / 2, y: vf.midY + 120))
+            // Posicionar SOLO al crear: si el usuario arrastró el popup, no lo devolvemos al centro
+            // cada vez que vuelve a grabar.
+            if let screen = NSScreen.main {
+                let vf = screen.visibleFrame; let s = p.frame.size
+                p.setFrameOrigin(NSPoint(x: vf.midX - s.width / 2, y: vf.midY + 120))
+            }
         }
         NSApp.activate(ignoringOtherApps: true)
         recordingPanel?.makeKeyAndOrderFront(nil)

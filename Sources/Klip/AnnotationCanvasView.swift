@@ -36,7 +36,9 @@ final class AnnotationCanvasView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         baseImage.draw(in: bounds, from: .zero, operation: .copy, fraction: 1)
-        for a in annotations { a.draw() }
+        // El texto que se está reeditando se oculta del lienzo (lo muestra el NSTextField encima);
+        // así un Undo/cancel durante la reedición restaura el original en vez de perderlo.
+        for a in annotations where a.id != editingID { a.draw() }
         draft?.draw()
         drawSelectionHighlight()
     }
@@ -65,8 +67,8 @@ final class AnnotationCanvasView: NSView {
             }) {
                 let ann = annotations[idx]
                 if event.clickCount >= 2 {
-                    // Doble clic → reeditar.
-                    annotations.remove(at: idx)
+                    // Doble clic → reeditar. NO se quita del array: se oculta vía editingID mientras
+                    // se edita (draw lo salta), de modo que un Undo/cancel restaure el texto original.
                     editingID = ann.id
                     selectedTextID = nil
                     beginTextEditing(at: ann.start, existing: ann)
@@ -82,6 +84,7 @@ final class AnnotationCanvasView: NSView {
             }
             // Espacio vacío → nuevo texto.
             selectedTextID = nil
+            onSelectionChange?()   // sin texto seleccionado, la toolbar refleja el color/tamaño actuales
             beginTextEditing(at: p, existing: nil)
             needsDisplay = true
             return
@@ -89,6 +92,7 @@ final class AnnotationCanvasView: NSView {
 
         // Herramientas de dibujo.
         selectedTextID = nil
+        onSelectionChange?()
         commitActiveText()
         draft = Annotation(tool: currentTool, color: currentColor,
                            lineWidth: currentLineWidth, points: [p], text: nil)
@@ -164,6 +168,9 @@ final class AnnotationCanvasView: NSView {
         activeTextField = nil
         editingID = nil
         field.removeFromSuperview()
+        // Si se reeditaba un texto, quitar el original: lo reemplazamos abajo, o (si quedó vacío)
+        // lo eliminamos confirmando vacío.
+        if let id { annotations.removeAll { $0.id == id } }
         guard !text.isEmpty else { needsDisplay = true; return }
         let lineHeight = font.ascender - font.descender
         let drawY = frame.minY + (frame.height - lineHeight) / 2
@@ -183,6 +190,12 @@ final class AnnotationCanvasView: NSView {
     var effectiveFontSize: CGFloat {
         if let id = selectedTextID, let a = annotations.first(where: { $0.id == id }) { return a.fontSize }
         return currentFontSize
+    }
+
+    /// Color efectivo a reflejar en la toolbar: el del texto seleccionado, o el actual.
+    var effectiveColor: NSColor {
+        if let id = selectedTextID, let a = annotations.first(where: { $0.id == id }) { return a.color }
+        return currentColor
     }
 
     /// Aplica un nuevo tamaño: al texto seleccionado (si lo hay) y como tamaño por defecto para el próximo.
@@ -214,7 +227,13 @@ final class AnnotationCanvasView: NSView {
     // MARK: - Acciones
 
     func undo() {
-        if activeTextField != nil { activeTextField?.removeFromSuperview(); activeTextField = nil; editingID = nil; return }
+        // Si se está editando texto, cancelar la edición: el original sigue en el array (oculto por
+        // editingID) y reaparece al limpiar editingID. No se pierde el texto reeditado.
+        if activeTextField != nil {
+            activeTextField?.removeFromSuperview(); activeTextField = nil; editingID = nil
+            needsDisplay = true
+            return
+        }
         guard !annotations.isEmpty else { return }
         annotations.removeLast()
         selectedTextID = nil
@@ -230,21 +249,28 @@ final class AnnotationCanvasView: NSView {
 
         let pxW = baseImage.representations.first?.pixelsWide ?? Int(bounds.width)
         let pxH = baseImage.representations.first?.pixelsHigh ?? Int(bounds.height)
-        guard pxW > 0, pxH > 0,
-              let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: pxW, pixelsHigh: pxH,
+        if pxW > 0, pxH > 0,
+           let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: pxW, pixelsHigh: pxH,
                 bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-                colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
-        else { return baseImage }
-        rep.size = bounds.size
+                colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) {
+            rep.size = bounds.size
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+            baseImage.draw(in: bounds, from: .zero, operation: .copy, fraction: 1)
+            for a in annotations { a.draw() }
+            NSGraphicsContext.restoreGraphicsState()
+            let out = NSImage(size: bounds.size)
+            out.addRepresentation(rep)
+            return out
+        }
 
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        // Fallback (no se pudo crear el bitmap a resolución de píxeles): rasterizar a tamaño de puntos
+        // PERO incluyendo las anotaciones. Nunca devolver la base limpia: perdería el trabajo del usuario.
+        let out = NSImage(size: bounds.size)
+        out.lockFocus()
         baseImage.draw(in: bounds, from: .zero, operation: .copy, fraction: 1)
         for a in annotations { a.draw() }
-        NSGraphicsContext.restoreGraphicsState()
-
-        let out = NSImage(size: bounds.size)
-        out.addRepresentation(rep)
+        out.unlockFocus()
         return out
     }
 }

@@ -101,7 +101,7 @@ struct PreferencesView: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text("Klip").font(.title2).bold()
-                Text("v\(AppInfo.version) · Gestor de portapapeles para macOS")
+                Text("v\(AppInfo.version) · Portapapeles para vibe coders en macOS")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack(spacing: 12) {
                     if let u = URL(string: AppInfo.repoURL) {
@@ -180,6 +180,7 @@ struct PreferencesView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
 
+            if settings.aiProvider == "openai" {
             Section("OpenAI (clave para voz)") {
                 keyStatus(apiKey)
                 HStack {
@@ -202,7 +203,9 @@ struct PreferencesView: View {
                 }
                 if let err = apiKey.errorMessage { Text(err).font(.caption).foregroundStyle(.red) }
             }
+            }
 
+            if settings.aiProvider == "gemini" {
             Section("Google Gemini (clave para voz)") {
                 keyStatus(geminiKey)
                 HStack {
@@ -225,6 +228,7 @@ struct PreferencesView: View {
                 if let err = geminiKey.errorMessage { Text(err).font(.caption).foregroundStyle(.red) }
                 Text("Obtén tu clave en aistudio.google.com. Se guarda en un archivo local 0600, nunca en el repositorio.")
                     .font(.caption).foregroundStyle(.secondary)
+            }
             }
 
             Section("Privacidad") {

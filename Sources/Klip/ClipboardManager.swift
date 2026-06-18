@@ -208,6 +208,9 @@ final class ClipboardManager: ObservableObject {
         guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
         items[idx].text = nil
         items[idx].preview = Self.voiceTranscribing
+        // Re-registrar el guard de portapapeles: si no, un reintento exitoso nunca se auto-pegaría
+        // (removeValue daría nil → canPaste=false). El auto-pegado de reintentos quedaba muerto.
+        voicePasteGuards[id] = NSPasteboard.general.changeCount
         storage.saveItems(items)
     }
 
@@ -217,7 +220,8 @@ final class ClipboardManager: ObservableObject {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let canPaste = voicePasteGuards.removeValue(forKey: id).map { $0 == NSPasteboard.general.changeCount } ?? false
         guard let idx = items.firstIndex(where: { $0.id == id }) else {
-            if !clean.isEmpty, canPaste { setClipboardText(clean) }   // el placeholder ya no existe: no perder el texto
+            // El elemento ya no existe: el usuario lo borró (o se reemplazó al importar). No tocar su
+            // portapapeles con la transcripción de una nota que eliminó a propósito.
             return
         }
         items[idx].text = clean.isEmpty ? nil : clean

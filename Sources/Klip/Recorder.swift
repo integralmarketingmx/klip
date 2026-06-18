@@ -245,7 +245,10 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @MainActor
     private func transcribeInBackground(id: UUID?, url: URL) {
         transcribingCount += 1
-        let model = Settings.shared.transcriptionModel       // leídos en MainActor (evita data race)
+        // Resolver el modelo del proveedor activo aquí, en el MainActor (evita leer Settings.shared
+        // desde el hilo de la transcripción). Gemini y OpenAI tienen su propio ajuste de modelo.
+        let model = Settings.shared.aiProvider == "gemini"
+            ? Settings.shared.geminiModel : Settings.shared.transcriptionModel
         let language = Settings.shared.transcriptionLanguage
         Task { @MainActor in
             defer { transcribingCount -= 1 }

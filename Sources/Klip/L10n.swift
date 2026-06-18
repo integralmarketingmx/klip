@@ -83,6 +83,9 @@ enum L10n {
         "export.partial": "Se exportarán %d de %d elementos (los demás no tienen contenido exportable).",
         "hotkey.inuse": "Esa combinación ya está en uso por otro atajo de Klip.",
         "common.cancel": "Cancelar",
+        "common.ok": "Aceptar",
+        "collection.add.title": "Añadir a colección",
+        "collection.add.info": "Nombre de la colección (déjalo vacío para quitar de su colección).",
         "badge.remote": "Otro dispositivo"
     ]
 
@@ -160,6 +163,9 @@ enum L10n {
         "export.partial": "%d of %d items will be exported (the rest have no exportable content).",
         "hotkey.inuse": "That combination is already used by another Klip shortcut.",
         "common.cancel": "Cancel",
+        "common.ok": "OK",
+        "collection.add.title": "Add to collection",
+        "collection.add.info": "Collection name (leave empty to remove from its collection).",
         "badge.remote": "Other device"
     ]
 }

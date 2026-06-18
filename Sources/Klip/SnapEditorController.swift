@@ -7,6 +7,7 @@ final class SnapEditorController: NSObject, NSWindowDelegate {
     private let canvas: AnnotationCanvasView
     private let onFinish: (NSImage?) -> Void
     private var toolButtons: [SnapTool: NSButton] = [:]
+    private var colorWell: NSColorWell?
     private var finished = false
 
     init(image: NSImage, onFinish: @escaping (NSImage?) -> Void) {
@@ -53,6 +54,8 @@ final class SnapEditorController: NSObject, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
         win.makeFirstResponder(canvas)
         selectTool(.arrow)
+        // Al seleccionar un texto existente, reflejar su color en el pozo de color de la toolbar.
+        canvas.onSelectionChange = { [weak self] in self?.colorWell?.color = self?.canvas.effectiveColor ?? .systemRed }
         self.window = win
     }
 
@@ -97,6 +100,7 @@ final class SnapEditorController: NSObject, NSWindowDelegate {
         well.widthAnchor.constraint(equalToConstant: 44).isActive = true
         well.heightAnchor.constraint(equalToConstant: size).isActive = true
         leading.addArrangedSubview(well)
+        colorWell = well
 
         let widths = NSSegmentedControl(labels: ["S", "M", "L"], trackingMode: .selectOne,
                                         target: self, action: #selector(widthChanged(_:)))
@@ -195,26 +199,49 @@ final class SnapEditorController: NSObject, NSWindowDelegate {
     }
 
     @objc private func saveTapped() {
+        guard let window else { return }
         let image = canvas.flattened()
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png]
         panel.nameFieldStringValue = "Captura Klip.png"
-        panel.begin { [weak self] resp in
-            guard resp == .OK, let url = panel.url else { return }
-            if let tiff = image.tiffRepresentation,
-               let rep = NSBitmapImageRep(data: tiff),
-               let png = rep.representation(using: .png, properties: [:]) {
-                try? png.write(to: url)
+        // Hoja anclada a la ventana del editor (no flotante) para que no quede huérfana si se cierra.
+        panel.beginSheetModal(for: window) { [weak self] resp in
+            guard let self else { return }
+            guard resp == .OK, let url = panel.url else { return }   // cancelar: el editor sigue abierto
+            guard let tiff = image.tiffRepresentation,
+                  let rep = NSBitmapImageRep(data: tiff),
+                  let png = rep.representation(using: .png, properties: [:]) else {
+                self.showError("No se pudo generar el PNG de la captura."); return
             }
-            self?.finish(with: image)
+            do {
+                try png.write(to: url)
+                self.finish(with: image)
+            } catch {
+                // Fallo de escritura (disco lleno, ruta de solo lectura…): avisar y NO cerrar el editor,
+                // para no perder la anotación creyendo que se guardó.
+                self.showError("No se pudo guardar la captura: \(error.localizedDescription)")
+            }
         }
+    }
+
+    private func showError(_ msg: String) {
+        let a = NSAlert(); a.messageText = "Guardar captura"; a.informativeText = msg
+        a.addButton(withTitle: "OK"); a.runModal()
     }
 
     @objc private func closeTapped() { finish(with: nil) }
 
+    /// Cierra el editor y, con él, el NSColorPanel compartido y el pozo de color (si quedaron activos):
+    /// de lo contrario el panel de color seguiría flotando sobre una app de barra de menú sin ventanas.
+    private func dismissColorUI() {
+        colorWell?.deactivate()
+        if NSColorPanel.sharedColorPanelExists { NSColorPanel.shared.orderOut(nil) }
+    }
+
     private func finish(with image: NSImage?) {
         guard !finished else { return }
         finished = true
+        dismissColorUI()
         window?.orderOut(nil)
         window = nil
         onFinish(image)
@@ -223,6 +250,7 @@ final class SnapEditorController: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         guard !finished else { return }
         finished = true
+        dismissColorUI()
         onFinish(nil)
     }
 }

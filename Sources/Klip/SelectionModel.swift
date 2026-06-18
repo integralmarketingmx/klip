@@ -52,9 +52,4 @@ final class SelectionModel: ObservableObject {
     func reset() {
         selectedIndex = visibleIDs.isEmpty ? -1 : 0
     }
-
-    private func clamp() {
-        if visibleIDs.isEmpty { selectedIndex = -1 }
-        else { selectedIndex = max(0, min(selectedIndex, visibleIDs.count - 1)) }
-    }
 }

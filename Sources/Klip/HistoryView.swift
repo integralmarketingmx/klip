@@ -72,6 +72,14 @@ struct HistoryView: View {
         }
     }
 
+    /// Solo los filtros que tienen elementos ahora mismo (más "Todo"): un usuario que solo copió texto
+    /// no ve chips vacíos de Imagen/Voz/Credencial que parecen "no funcionar".
+    private var availableFilters: [HistoryFilter] {
+        HistoryFilter.allCases.filter { f in
+            f == .all || manager.items.contains { matches($0, f) }
+        }
+    }
+
     private var filtered: [ClipboardItem] {
         var base = sortedItems.filter { matches($0, filter) }
         if let cf = collectionFilter { base = base.filter { $0.collection == cf } }
@@ -103,6 +111,9 @@ struct HistoryView: View {
             // Si la colección filtrada dejó de existir (se borró/renombró su último elemento), soltar el
             // filtro: si no, la lista quedaría falsamente vacía sin chip visible para limpiarlo.
             if let cf = collectionFilter, !manager.collections.contains(cf) { collectionFilter = nil }
+            // Si el tipo filtrado ya no tiene elementos, su chip desaparece: volver a "Todo" para no
+            // quedar con una lista vacía y ningún chip seleccionado visible.
+            if !availableFilters.contains(filter) { filter = .all }
             // Quitar del lote los ids que ya no existen (p. ej. auto-recorte por maxItems al entrar clips
             // nuevos): mantiene el contador "N sel." sincronizado con lo que realmente se exportará.
             if !selectedBatch.isEmpty {
@@ -189,7 +200,7 @@ struct HistoryView: View {
     private var filterRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
-                ForEach(HistoryFilter.allCases) { f in
+                ForEach(availableFilters) { f in
                     chip(L10n.t(f.labelKey), icon: f.icon, selected: filter == f && collectionFilter == nil) {
                         filter = f; collectionFilter = nil
                     }
@@ -573,11 +584,13 @@ struct ItemRow: View {
                 iconButton("key.slash", L10n.t("row.unmarkcred")) { manager.toggleCredential(item) }
             } else {
                 iconButton("doc.on.doc", L10n.t("row.copy")) { onPick(item) }
+                // Copiar como bloque de código (``` ```): acción primaria del perfil vibe coder
+                // (pegar snippets en chats de IA), antes enterrada en el menú ⋯.
+                iconButton("chevron.left.forwardslash.chevron.right", L10n.t("row.code")) { onCopyAsCode(item) }
                 if let u = linkURL {
                     iconButton("arrow.up.right.square", L10n.t("row.openlink")) { NSWorkspace.shared.open(u) }
                 }
                 Menu {
-                    Button { onCopyAsCode(item) } label: { Label(L10n.t("row.code"), systemImage: "chevron.left.forwardslash.chevron.right") }
                     Button { onCopyMarkdown(item) } label: { Label(L10n.t("row.markdown"), systemImage: "doc.richtext") }
                     Button { onSaveAsFile(item) } label: { Label(L10n.t("row.savefile"), systemImage: "square.and.arrow.down") }
                     Divider()

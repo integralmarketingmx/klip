@@ -28,13 +28,15 @@ final class SnapController {
         inProgress = true
         let mouse = NSEvent.mouseLocation
         Task { @MainActor in
-            defer { self.inProgress = false }
             do {
                 let shot = try await ScreenCapturer.captureDisplay(containing: mouse)
+                self.inProgress = false
                 self.presentOverlay(shot)
             } catch CaptureError.noPermission {
+                self.inProgress = false          // liberar ANTES del modal (evita reentrancia del runloop)
                 self.promptForPermission()
             } catch {
+                self.inProgress = false
                 NSSound.beep()
             }
         }
@@ -63,8 +65,16 @@ final class SnapController {
         editor.present()
     }
 
-    /// Sin permiso de Grabación de pantalla: explica y abre Ajustes del sistema.
+    /// Sin permiso de Grabación de pantalla. La PRIMERA vez dejamos solo el prompt nativo del sistema
+    /// (`requestPermission`); en intentos posteriores (cuando el prompt nativo ya no reaparece) mostramos
+    /// nuestra guía con acceso directo a Ajustes. Así nunca se solapan los dos mensajes.
     private func promptForPermission() {
+        let askedKey = "klip.askedScreenRecording"
+        if !UserDefaults.standard.bool(forKey: askedKey) {
+            UserDefaults.standard.set(true, forKey: askedKey)
+            ScreenCapturer.requestPermission()   // solo el prompt nativo la primera vez
+            return
+        }
         let alert = NSAlert()
         alert.messageText = "Klip necesita permiso de Grabación de pantalla"
         alert.informativeText = "Para capturar una región de la pantalla, concede acceso a Klip en "
@@ -72,7 +82,6 @@ final class SnapController {
             + "Tras concederlo, vuelve a pulsar el atajo de captura."
         alert.addButton(withTitle: "Abrir Ajustes")
         alert.addButton(withTitle: "Cancelar")
-        ScreenCapturer.requestPermission()   // dispara el prompt nativo la primera vez
         if alert.runModal() == .alertFirstButtonReturn {
             if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
                 NSWorkspace.shared.open(url)

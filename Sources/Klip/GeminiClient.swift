@@ -5,12 +5,6 @@ import Foundation
 final class GeminiClient {
     static let shared = GeminiClient()
     private let session: URLSession
-    /// Modelo configurable en Preferencias. Por defecto "gemini-flash-latest" (alias siempre al último
-    /// flash, evita 404 por deprecación). Se lee en cada transcripción para reflejar cambios en caliente.
-    private var model: String {
-        let m = Settings.shared.geminiModel.trimmingCharacters(in: .whitespacesAndNewlines)
-        return m.isEmpty ? "gemini-flash-latest" : m
-    }
     init(session: URLSession = .shared) { self.session = session }
 
     var hasAPIKey: Bool {
@@ -23,8 +17,12 @@ final class GeminiClient {
         return v
     }
 
-    func transcribe(audioURL: URL, language: String?) async throws -> String {
+    /// `model` se resuelve en el MainActor por quien llama (Recorder) y se pasa aquí, para no leer
+    /// `Settings.shared` desde el hilo de la transcripción (evita el data race con un @Published).
+    func transcribe(audioURL: URL, language: String?, model: String) async throws -> String {
         let key = try apiKey()
+        let resolvedModel = model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "gemini-flash-latest" : model.trimmingCharacters(in: .whitespacesAndNewlines)
         let data = try Data(contentsOf: audioURL)
         let base64 = data.base64EncodedString()
         let lang = (language?.isEmpty == false) ? language! : "es"
@@ -43,7 +41,7 @@ final class GeminiClient {
         ]
         let body = try JSONSerialization.data(withJSONObject: payload)
 
-        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent")!
+        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(resolvedModel):generateContent")!
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue(key, forHTTPHeaderField: "x-goog-api-key")
@@ -101,7 +99,7 @@ enum AIProvider {
 
     static func transcribe(audioURL: URL, language: String?, model: String) async throws -> String {
         if selected == "gemini", GeminiClient.shared.hasAPIKey {
-            return try await GeminiClient.shared.transcribe(audioURL: audioURL, language: language)
+            return try await GeminiClient.shared.transcribe(audioURL: audioURL, language: language, model: model)
         }
         return try await OpenAIClient.shared.transcribe(audioURL: audioURL, language: language, model: model)
     }

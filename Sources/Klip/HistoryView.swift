@@ -13,7 +13,7 @@ enum HistoryFilter: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .all: "square.grid.2x2"; case .text: "doc.text"; case .image: "photo"
-        case .voice: "waveform"; case .credential: "key.fill"; case .pinned: "pin.fill"
+        case .voice: "waveform"; case .credential: "key.fill"; case .pinned: "star.fill"
         }
     }
 }
@@ -516,7 +516,7 @@ struct ItemRow: View {
         .padding(8)
     }
 
-    private var pinDot: some View { Image(systemName: "pin.fill").foregroundStyle(.orange).font(.system(size: 10)) }
+    private var pinDot: some View { Image(systemName: "star.fill").foregroundStyle(.orange).font(.system(size: 10)) }
 
     @ViewBuilder private var thumbnail: some View {
         if isCredential {
@@ -598,8 +598,8 @@ struct ItemRow: View {
                 } label: { Image(systemName: "ellipsis.circle").font(.system(size: 12)) }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help(L10n.t("act.more"))
             }
-            iconButton("pencil", L10n.t("row.rename")) { onRename(item) }
-            iconButton(item.pinned ? "pin.slash" : "pin", L10n.t(item.pinned ? "row.unpin" : "row.pin")) {
+            iconButton("tag", L10n.t("row.rename")) { onRename(item) }
+            iconButton(item.pinned ? "star.fill" : "star", L10n.t(item.pinned ? "row.unpin" : "row.pin")) {
                 manager.togglePin(item)
             }
             iconButton("trash", L10n.t("row.delete")) { manager.delete(item) }

@@ -7,7 +7,12 @@ final class SnapEditorController: NSObject, NSWindowDelegate {
     private let canvas: AnnotationCanvasView
     private let onFinish: (NSImage?) -> Void
     private var toolButtons: [SnapTool: NSButton] = [:]
-    private var colorWell: NSColorWell?
+    private var colorButtons: [NSButton] = []
+    private var colorIndex = 0
+    /// Paleta para dibujo normal y paleta de tonos de resaltador (se usa con el marcador).
+    private let normalColors: [NSColor] = [.systemRed, .systemBlue, .black, .white]
+    private let markerColors: [NSColor] = [.systemYellow, .systemGreen, .systemPink, .systemOrange]
+    private var palette: [NSColor] { canvas.currentTool == .marker ? markerColors : normalColors }
     private var finished = false
 
     init(image: NSImage, onFinish: @escaping (NSImage?) -> Void) {
@@ -53,9 +58,10 @@ final class SnapEditorController: NSObject, NSWindowDelegate {
         win.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         win.makeFirstResponder(canvas)
+        canvas.currentLineWidth = 4   // trazo por defecto más grueso (más visible)
         selectTool(.arrow)
-        // Al seleccionar un texto existente, reflejar su color en el pozo de color de la toolbar.
-        canvas.onSelectionChange = { [weak self] in self?.colorWell?.color = self?.canvas.effectiveColor ?? .systemRed }
+        // Al seleccionar/deseleccionar un texto, reflejar su color en la paleta de la toolbar.
+        canvas.onSelectionChange = { [weak self] in self?.syncColorSelectionFromCanvas() }
         self.window = win
     }
 
@@ -76,37 +82,40 @@ final class SnapEditorController: NSObject, NSWindowDelegate {
         leading.translatesAutoresizingMaskIntoConstraints = false
 
         for tool in SnapTool.allCases {
-            let b = NSButton()
-            b.bezelStyle = .texturedRounded
-            b.setButtonType(.toggle)
-            b.image = NSImage(systemSymbolName: tool.symbol, accessibilityDescription: tool.tooltip)
-            b.imageScaling = .scaleProportionallyDown
-            b.toolTip = tool.tooltip
-            b.target = self
-            b.action = #selector(toolTapped(_:))
-            b.tag = SnapTool.allCases.firstIndex(of: tool) ?? 0
-            b.translatesAutoresizingMaskIntoConstraints = false
-            b.widthAnchor.constraint(equalToConstant: size).isActive = true
-            b.heightAnchor.constraint(equalToConstant: size).isActive = true
+            let b = makeToolButton(tool)
+            b.widthAnchor.constraint(equalToConstant: 36).isActive = true
+            b.heightAnchor.constraint(equalToConstant: 32).isActive = true
             toolButtons[tool] = b
             leading.addArrangedSubview(b)
         }
 
-        let well = NSColorWell()
-        well.color = .systemRed
-        well.target = self
-        well.action = #selector(colorChanged(_:))
-        well.translatesAutoresizingMaskIntoConstraints = false
-        well.widthAnchor.constraint(equalToConstant: 44).isActive = true
-        well.heightAnchor.constraint(equalToConstant: size).isActive = true
-        leading.addArrangedSubview(well)
-        colorWell = well
+        leading.addArrangedSubview(separator())
 
-        let widths = NSSegmentedControl(labels: ["S", "M", "L"], trackingMode: .selectOne,
+        // Colores: 4 presets (cambian a tonos de resaltador con el marcador) + "más" para el resto.
+        for i in 0..<4 {
+            let b = makeColorButton(tag: i)
+            b.widthAnchor.constraint(equalToConstant: 24).isActive = true
+            b.heightAnchor.constraint(equalToConstant: 24).isActive = true
+            colorButtons.append(b)
+            leading.addArrangedSubview(b)
+        }
+        let more = makeActionButton(symbol: "ellipsis.circle", tip: "Más colores…", action: #selector(moreColorTapped))
+        more.translatesAutoresizingMaskIntoConstraints = false
+        more.widthAnchor.constraint(equalToConstant: 30).isActive = true
+        leading.addArrangedSubview(more)
+
+        leading.addArrangedSubview(separator())
+
+        // Grosor: solo dos niveles (fina / gruesa), más gruesos y visibles que antes.
+        let widths = NSSegmentedControl(images: [lineImage(3), lineImage(8)],
+                                        trackingMode: .selectOne,
                                         target: self, action: #selector(widthChanged(_:)))
-        widths.selectedSegment = 1
+        widths.setWidth(40, forSegment: 0); widths.setWidth(40, forSegment: 1)
+        widths.selectedSegment = 0
         widths.toolTip = "Grosor del trazo"
         leading.addArrangedSubview(widths)
+
+        leading.addArrangedSubview(separator())
 
         // Tamaño de texto (afecta al texto seleccionado o al próximo que escribas).
         let smaller = makeActionButton(symbol: "textformat.size.smaller", tip: "Texto más chico", action: #selector(textSmaller))
@@ -179,13 +188,126 @@ final class SnapEditorController: NSObject, NSWindowDelegate {
 
     private func selectTool(_ tool: SnapTool) {
         canvas.currentTool = tool
-        for (t, b) in toolButtons { b.state = (t == tool) ? .on : .off }
+        for (t, b) in toolButtons {
+            let on = (t == tool)
+            b.layer?.backgroundColor = on ? NSColor.controlAccentColor.cgColor : NSColor.clear.cgColor
+            b.contentTintColor = on ? .white : .labelColor   // resalta claramente la herramienta activa
+        }
+        refreshColorSwatches()                                // el marcador muestra tonos de resaltador
+        if colorIndex >= 0 { canvas.setColor(palette[min(colorIndex, palette.count - 1)]) }
     }
 
-    @objc private func colorChanged(_ sender: NSColorWell) { canvas.setColor(sender.color) }
-
     @objc private func widthChanged(_ sender: NSSegmentedControl) {
-        canvas.currentLineWidth = [2.0, 3.0, 6.0][max(0, min(2, sender.selectedSegment))]
+        canvas.currentLineWidth = sender.selectedSegment == 1 ? 10 : 4   // gruesa / fina
+    }
+
+    // MARK: - Color
+
+    @objc private func colorTapped(_ sender: NSButton) {
+        colorIndex = sender.tag
+        canvas.setColor(palette[min(colorIndex, palette.count - 1)])
+        refreshColorSwatches()
+    }
+
+    @objc private func moreColorTapped() {
+        let panel = NSColorPanel.shared
+        panel.setTarget(self)
+        panel.setAction(#selector(customColorChanged(_:)))
+        panel.color = canvas.effectiveColor
+        panel.isContinuous = true
+        panel.makeKeyAndOrderFront(nil)
+    }
+
+    @objc private func customColorChanged(_ sender: NSColorPanel) {
+        colorIndex = -1                                        // color libre: ningún preset marcado
+        canvas.setColor(sender.color)
+        refreshColorSwatches()
+    }
+
+    /// Si el texto seleccionado usa un color de la paleta, marca ese swatch (si no, ninguno).
+    private func syncColorSelectionFromCanvas() {
+        colorIndex = palette.firstIndex(where: { Self.approxEqual($0, canvas.effectiveColor) }) ?? -1
+        refreshColorSwatches()
+    }
+
+    private func refreshColorSwatches() {
+        let colors = palette
+        for (i, b) in colorButtons.enumerated() {
+            b.image = Self.swatchImage(i < colors.count ? colors[i] : .clear)
+            b.layer?.cornerRadius = 12
+            let on = (i == colorIndex)
+            b.layer?.borderWidth = on ? 2.5 : 0
+            b.layer?.borderColor = NSColor.controlAccentColor.cgColor
+        }
+    }
+
+    // MARK: - Constructores de controles
+
+    private func makeToolButton(_ tool: SnapTool) -> NSButton {
+        let b = NSButton(title: "", target: self, action: #selector(toolTapped(_:)))
+        b.isBordered = false
+        b.wantsLayer = true
+        b.layer?.cornerRadius = 7
+        b.imageScaling = .scaleProportionallyDown
+        let cfg = NSImage.SymbolConfiguration(pointSize: 17, weight: .semibold)
+        b.image = NSImage(systemSymbolName: tool.symbol, accessibilityDescription: tool.tooltip)?
+            .withSymbolConfiguration(cfg)
+        b.toolTip = tool.tooltip
+        b.tag = SnapTool.allCases.firstIndex(of: tool) ?? 0
+        b.translatesAutoresizingMaskIntoConstraints = false
+        return b
+    }
+
+    private func makeColorButton(tag: Int) -> NSButton {
+        let b = NSButton(title: "", target: self, action: #selector(colorTapped(_:)))
+        b.isBordered = false
+        b.wantsLayer = true
+        b.tag = tag
+        b.toolTip = "Color"
+        b.translatesAutoresizingMaskIntoConstraints = false
+        return b
+    }
+
+    private func separator() -> NSView {
+        let box = NSBox()
+        box.boxType = .separator
+        box.translatesAutoresizingMaskIntoConstraints = false
+        box.widthAnchor.constraint(equalToConstant: 1).isActive = true
+        box.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        return box
+    }
+
+    private static func swatchImage(_ color: NSColor) -> NSImage {
+        let d: CGFloat = 20
+        let img = NSImage(size: NSSize(width: d, height: d))
+        img.lockFocus()
+        color.setFill()
+        NSBezierPath(ovalIn: NSRect(x: 2, y: 2, width: d - 4, height: d - 4)).fill()
+        NSColor.separatorColor.setStroke()                     // borde para que el blanco se vea
+        let ring = NSBezierPath(ovalIn: NSRect(x: 2, y: 2, width: d - 4, height: d - 4))
+        ring.lineWidth = 1; ring.stroke()
+        img.unlockFocus()
+        return img
+    }
+
+    private func lineImage(_ thickness: CGFloat) -> NSImage {
+        let w: CGFloat = 24, h: CGFloat = 16
+        let img = NSImage(size: NSSize(width: w, height: h))
+        img.lockFocus()
+        NSColor.labelColor.setStroke()
+        let p = NSBezierPath()
+        p.move(to: NSPoint(x: 4, y: h / 2)); p.line(to: NSPoint(x: w - 4, y: h / 2))
+        p.lineWidth = thickness; p.lineCapStyle = .round; p.stroke()
+        img.unlockFocus()
+        img.isTemplate = true
+        return img
+    }
+
+    private static func approxEqual(_ a: NSColor, _ b: NSColor) -> Bool {
+        guard let x = a.usingColorSpace(.sRGB), let y = b.usingColorSpace(.sRGB) else { return false }
+        return abs(x.redComponent - y.redComponent) < 0.02
+            && abs(x.greenComponent - y.greenComponent) < 0.02
+            && abs(x.blueComponent - y.blueComponent) < 0.02
     }
 
     @objc private func textSmaller() { canvas.bumpFontSize(-4) }
@@ -231,11 +353,14 @@ final class SnapEditorController: NSObject, NSWindowDelegate {
 
     @objc private func closeTapped() { finish(with: nil) }
 
-    /// Cierra el editor y, con él, el NSColorPanel compartido y el pozo de color (si quedaron activos):
-    /// de lo contrario el panel de color seguiría flotando sobre una app de barra de menú sin ventanas.
+    /// Al cerrar el editor, cierra también el NSColorPanel compartido (si se abrió con "más colores"):
+    /// de lo contrario seguiría flotando sobre una app de barra de menú sin ventanas, apuntando a un
+    /// editor ya destruido.
     private func dismissColorUI() {
-        colorWell?.deactivate()
-        if NSColorPanel.sharedColorPanelExists { NSColorPanel.shared.orderOut(nil) }
+        guard NSColorPanel.sharedColorPanelExists else { return }
+        NSColorPanel.shared.setTarget(nil)
+        NSColorPanel.shared.setAction(nil)
+        NSColorPanel.shared.orderOut(nil)
     }
 
     private func finish(with image: NSImage?) {

@@ -48,7 +48,11 @@ final class PanelController: NSObject, NSWindowDelegate {
     private func buildPanel() {
         recorder.onVoiceNoteStarted = { [weak self] fn, dur in self?.manager.beginVoiceNote(audioFileName: fn, duration: dur) }
         recorder.onVoiceNoteTranscribed = { [weak self] id, text in self?.manager.finishVoiceNote(id: id, text: text) }
-        recorder.onVoiceNoteFailed = { [weak self] id in self?.manager.failVoiceNote(id: id) }
+        recorder.onVoiceNoteFailed = { [weak self] id, err in
+            self?.manager.failVoiceNote(id: id, reason: err?.message)
+            // Solo si fue problema de CLAVE ofrecemos pegar una nueva (panel A); red/otros no.
+            if let err, err.isAuth { self?.presentTranscriptionKeyAlert(noteID: id, error: err) }
+        }
         recorder.onVoiceNoteRetrying = { [weak self] id in self?.manager.markVoiceNoteTranscribing(id: id) }
 
         let root = HistoryView(
@@ -319,14 +323,27 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     private func showAnnotationWindow(image: NSImage) {
+        // Escala la captura para que quepa ENTERA en la pantalla visible (zoom out):
+        // así la barra de herramientas no tapa contenido y el usuario no necesita hacer scroll.
+        let toolbarH: CGFloat = 56          // alto aprox. de la barra de herramientas
+        let margin: CGFloat = 48            // aire alrededor de la ventana
+        let visible = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let maxW = max(320, visible.width - margin)
+        let maxH = max(240, visible.height - margin - toolbarH)
+        let img = image.size
+        let scale = min(1, min(maxW / max(img.width, 1), maxH / max(img.height, 1)))
+        let displaySize = CGSize(width: (img.width * scale).rounded(.down),
+                                 height: (img.height * scale).rounded(.down))
+
         let view = AnnotationView(
             image: image,
+            displaySize: displaySize,
             onAddToKlip: { [weak self] img in self?.manager.addCapturedImage(img) },
             onClose: { [weak self] in self?.annotationWindow?.close() })
         let w = NSWindow(
             contentRect: NSRect(x: 0, y: 0,
-                                width: min(960, image.size.width + 40),
-                                height: min(720, image.size.height + 96)),
+                                width: displaySize.width,
+                                height: displaySize.height + toolbarH),
             styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
         w.title = "Anotar captura"
         w.isReleasedWhenClosed = false
@@ -397,6 +414,59 @@ final class PanelController: NSObject, NSWindowDelegate {
         a.addButton(withTitle: "OK")
         NSApp.activate(ignoringOtherApps: true)
         a.runModal()
+    }
+
+    /// Panel A: la transcripción falló por una CLAVE inválida. Permite pegar una clave nueva
+    /// ahí mismo (se guarda como preferencia) y reintentar, o usar OpenAI esta vez, o cerrar.
+    private func presentTranscriptionKeyAlert(noteID: UUID, error: TranscriptionError) {
+        guard !isModalActive else { return }   // no apilar sobre otro modal
+        let providerKey: SecretStore.Key = error.provider == "gemini" ? .gemini : .openai
+        let other = AIProvider.other(of: error.provider)            // proveedor de respaldo
+        let otherName = other == "gemini" ? "Gemini" : "OpenAI"
+        let audioFileName = manager.items.first(where: { $0.id == noteID })?.audioFileName
+
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "No se pudo transcribir la nota de voz"
+        alert.informativeText = "\(error.message)\n\nTu nota está guardada. Pega una clave válida y reintenta."
+
+        // Campo para la clave nueva.
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
+        field.placeholderString = error.provider == "gemini" ? "AIza…" : "sk-…"
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+
+        let save = alert.addButton(withTitle: "Guardar y reintentar")  // .alertFirstButtonReturn (default)
+        save.keyEquivalent = "\r"
+        let canUseOther = AIProvider.hasKey(for: other) && audioFileName != nil
+        if canUseOther { alert.addButton(withTitle: "Usar \(otherName) esta vez") } // .alertSecondButtonReturn
+        let close = alert.addButton(withTitle: "OK")                           // tercer (o segundo) botón
+        close.keyEquivalent = "\u{1b}"
+
+        modalCount += 1
+        isRenaming = true   // bloquea el auto-cierre del panel mientras el modal está abierto
+        NSApp.activate(ignoringOtherApps: true)
+        let resp = alert.runModal()
+        isRenaming = false
+        modalCount -= 1
+
+        switch resp {
+        case .alertFirstButtonReturn:   // Guardar y reintentar
+            let key = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !key.isEmpty else { return }
+            let ok = (try? SecretStore.set(key, providerKey)) ?? false
+            guard ok else { showAlert("No se pudo guardar la clave", "Revisa permisos de la carpeta de Klip."); return }
+            if let af = audioFileName {
+                MainActor.assumeIsolated { recorder.retry(itemID: noteID, audioFileName: af) }
+            }
+        case .alertSecondButtonReturn where canUseOther:   // Usar el otro proveedor esta vez
+            if let af = audioFileName {
+                MainActor.assumeIsolated { recorder.retry(itemID: noteID, audioFileName: af, forceProvider: other) }
+            }
+        default:
+            break   // OK / cerrar: la nota queda fallida con su audio para reintentar luego
+        }
+        if panel.isVisible { panel.makeKeyAndOrderFront(nil); selection.focusToken &+= 1 }
     }
 
     func assignSelectedToCollection(_ items: [ClipboardItem]) {

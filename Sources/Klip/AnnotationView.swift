@@ -365,6 +365,9 @@ struct AnnotationCanvas: NSViewRepresentable {
 /// Editor de anotación: barra de herramientas + lienzo + acciones (copiar / guardar / añadir a Klip).
 struct AnnotationView: View {
     let image: NSImage
+    /// Tamaño con el que se MUESTRA el lienzo (la captura se escala para caber en pantalla — zoom out).
+    /// Si es nil, se usa el tamaño nativo de la imagen.
+    var displaySize: CGSize? = nil
     var onAddToKlip: (NSImage) -> Void
     var onClose: () -> Void
 
@@ -374,17 +377,18 @@ struct AnnotationView: View {
 
     private let palette: [Color] = [.red, .orange, .yellow, .green, .blue, .white, .black]
 
+    private var canvasSize: CGSize { displaySize ?? image.size }
+
     var body: some View {
         VStack(spacing: 0) {
             toolbar
             Divider()
-            ScrollView([.horizontal, .vertical]) {
-                AnnotationCanvas(image: image, tool: $tool, color: $color, handle: handle)
-                    .frame(width: image.size.width, height: image.size.height)
-            }
-            .background(Color(nsColor: .windowBackgroundColor))
+            // Lienzo escalado para caber completo: sin scroll, la barra no tapa contenido.
+            AnnotationCanvas(image: image, tool: $tool, color: $color, handle: handle)
+                .frame(width: canvasSize.width, height: canvasSize.height)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(nsColor: .windowBackgroundColor))
         }
-        .frame(minWidth: 640, minHeight: 440)
     }
 
     private var toolbar: some View {

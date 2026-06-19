@@ -28,7 +28,8 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     /// Rellena la transcripción en el elemento ya creado.
     var onVoiceNoteTranscribed: ((UUID, String) -> Void)?
     /// La transcripción falló o no hubo voz: el elemento queda con el audio para reproducir/recuperar.
-    var onVoiceNoteFailed: ((UUID) -> Void)?
+    /// El segundo parámetro lleva el motivo (clave inválida, red, etc.) o nil si solo fue "sin voz".
+    var onVoiceNoteFailed: ((UUID, TranscriptionError?) -> Void)?
     /// Reintento: marca un elemento existente como "Transcribiendo…" otra vez.
     var onVoiceNoteRetrying: ((UUID) -> Void)?
 
@@ -235,27 +236,31 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     /// Reintenta transcribir el audio de un elemento que ya existe (nota fallida con su audio).
+    /// `forceProvider` ("openai") salta la elección y el fallback (p. ej. "Usar OpenAI esta vez").
     @MainActor
-    func retry(itemID: UUID, audioFileName: String) {
+    func retry(itemID: UUID, audioFileName: String, forceProvider: String? = nil) {
         onVoiceNoteRetrying?(itemID)
-        transcribeInBackground(id: itemID, url: storage.audioURL(for: audioFileName))
+        transcribeInBackground(id: itemID, url: storage.audioURL(for: audioFileName), forceProvider: forceProvider)
     }
 
     /// Núcleo de la transcripción en 2º plano (común a grabar, subir y reintentar). No toca `state`.
     @MainActor
-    private func transcribeInBackground(id: UUID?, url: URL) {
+    private func transcribeInBackground(id: UUID?, url: URL, forceProvider: String? = nil) {
         transcribingCount += 1
         let model = Settings.shared.transcriptionModel       // leídos en MainActor (evita data race)
         let language = Settings.shared.transcriptionLanguage
         Task { @MainActor in
             defer { transcribingCount -= 1 }
             do {
-                let text = try await AIProvider.transcribe(audioURL: url, language: language, model: model)
+                let text = try await AIProvider.transcribe(audioURL: url, language: language,
+                                                           model: model, forceProvider: forceProvider)
                 let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.isEmpty { if let id { onVoiceNoteFailed?(id) } }
+                if trimmed.isEmpty { if let id { onVoiceNoteFailed?(id, nil) } }   // sin voz: no es error de clave
                 else { if let id { onVoiceNoteTranscribed?(id, trimmed) } }
+            } catch let e as TranscriptionError {
+                if let id { onVoiceNoteFailed?(id, e) }   // el audio queda en el historial para reintentar/recuperar
             } catch {
-                if let id { onVoiceNoteFailed?(id) }   // el audio queda en el historial para reintentar/recuperar
+                if let id { onVoiceNoteFailed?(id, TranscriptionError.wrap(error, provider: AIProvider.selected)) }
             }
         }
     }

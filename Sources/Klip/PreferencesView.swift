@@ -67,7 +67,18 @@ struct PreferencesView: View {
     @State private var loginError: String?
     @State private var accessibilityGranted = Paster.hasAccessibilityPermission
 
+    @State private var costPromptCopied = false
+
     private let models = ["gpt-4o-mini-transcribe", "whisper-1"]
+
+    /// Prompt listo para pegar en cualquier IA y verificar los precios vigentes (cambian seguido).
+    private let costCheckPrompt = """
+    Compara el costo ACTUAL (hoy) de transcribir audio con estos modelos: \
+    Google Gemini (gemini-flash-latest, con thinkingBudget 0), \
+    OpenAI gpt-4o-mini-transcribe y OpenAI whisper-1. \
+    Dame el precio por minuto de cada uno y cuál es el más barato. \
+    Cita las páginas oficiales de precios de OpenAI y Google.
+    """
     // Modelos de Gemini. Los alias "-latest" evitan 404 por deprecación; se incluyen también
     // versiones fijadas para quien quiera estabilidad de comportamiento.
     private let geminiModels = ["gemini-flash-latest", "gemini-flash-lite-latest",
@@ -157,7 +168,7 @@ struct PreferencesView: View {
             }
 
             Section("Transcripción de voz") {
-                Picker("Proveedor", selection: $settings.aiProvider) {
+                Picker("Proveedor principal", selection: $settings.aiProvider) {
                     Text("OpenAI").tag("openai")
                     Text("Google Gemini").tag("gemini")
                 }
@@ -174,10 +185,36 @@ struct PreferencesView: View {
                 Picker("Idioma del audio", selection: $settings.transcriptionLanguage) {
                     ForEach(languages.sorted(by: { $0.value < $1.value }), id: \.key) { Text($1).tag($0) }
                 }
+                Toggle(settings.aiProvider == "gemini"
+                       ? "Usar OpenAI si Gemini falla"
+                       : "Usar Gemini si OpenAI falla", isOn: $settings.transcriptionFallback)
                 Text(settings.aiProvider == "gemini"
-                     ? "Se usará tu clave de Google Gemini (abajo)."
-                     : "Se usará tu clave de OpenAI (abajo).")
+                     ? "Prioridad: Gemini primero; si su clave no sirve, reintenta con OpenAI (cuando haya clave)."
+                     : "Prioridad: OpenAI primero; si su clave no sirve, reintenta con Gemini (cuando haya clave).")
                     .font(.caption).foregroundStyle(.secondary)
+            }
+
+            Section("Costo aproximado por transcripción") {
+                costRow(rank: 1, name: "Gemini", model: "gemini-flash-latest", perMin: "~$0.0020/min", cheapest: true)
+                costRow(rank: 2, name: "OpenAI mini", model: "gpt-4o-mini-transcribe", perMin: "~$0.003/min", cheapest: false)
+                costRow(rank: 3, name: "OpenAI Whisper", model: "whisper-1 (modelo viejo)", perMin: "~$0.006/min", cheapest: false)
+                Text("Medido en jun 2026 con ~1 min de audio. Gemini va sin “thinking” (más barato). **Los precios de las APIs cambian** — verifica los vigentes:")
+                    .font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 10) {
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(costCheckPrompt, forType: .string)
+                        costPromptCopied = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { costPromptCopied = false }
+                    } label: {
+                        Label(costPromptCopied ? "Prompt copiado ✓" : "Copiar prompt para verificar precios",
+                              systemImage: costPromptCopied ? "checkmark" : "doc.on.doc")
+                    }
+                    Link(label: "link", text: "Precios OpenAI", url: URL(string: "https://openai.com/api/pricing")!)
+                        .font(.caption)
+                    Link(label: "link", text: "Precios Gemini", url: URL(string: "https://ai.google.dev/gemini-api/docs/pricing")!)
+                        .font(.caption)
+                }
             }
 
             Section("OpenAI (clave para voz)") {
@@ -288,6 +325,29 @@ struct PreferencesView: View {
             } else {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                 Text("Sin clave configurada").foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func costRow(rank: Int, name: String, model: String, perMin: String, cheapest: Bool) -> some View {
+        HStack(spacing: 8) {
+            Text("\(rank)")
+                .font(.caption2).bold()
+                .frame(width: 16, height: 16)
+                .background(Circle().fill(cheapest ? Color.green.opacity(0.22) : Color.secondary.opacity(0.15)))
+                .foregroundStyle(cheapest ? .green : .secondary)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(name)
+                Text(model).font(.caption2).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(perMin).font(.system(.body, design: .monospaced))
+            if cheapest {
+                Text("más barato")
+                    .font(.caption2).bold().foregroundStyle(.green)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Capsule().fill(Color.green.opacity(0.16)))
             }
         }
     }

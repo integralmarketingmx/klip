@@ -103,6 +103,7 @@ final class Settings: ObservableObject {
         static let geminiModel = "geminiModel"
         static let transLang  = "transcriptionLanguage"
         static let aiProv     = "aiProvider"
+        static let transFallback = "transcriptionFallback"
         static let keyCode2   = "voiceHotKeyCode"
         static let mods2      = "voiceHotKeyModifiers"
         static let keyCode3   = "captureHotKeyCode"
@@ -128,6 +129,8 @@ final class Settings: ObservableObject {
     @Published var transcriptionLanguage: String { didSet { d.set(transcriptionLanguage, forKey: K.transLang) } }
     /// Proveedor de IA para transcripción: "openai" o "gemini".
     @Published var aiProvider: String { didSet { d.set(aiProvider, forKey: K.aiProv) } }
+    /// Si el proveedor elegido (Gemini) falla, reintenta con OpenAI cuando haya clave.
+    @Published var transcriptionFallback: Bool { didSet { d.set(transcriptionFallback, forKey: K.transFallback) } }
     @Published var voiceCombo: KeyCombo   { didSet {
         d.set(Int(voiceCombo.keyCode), forKey: K.keyCode2)
         d.set(Int(voiceCombo.carbonModifiers), forKey: K.mods2)
@@ -160,6 +163,7 @@ final class Settings: ObservableObject {
             K.geminiModel: "gemini-flash-latest",
             K.transLang: "es",
             K.aiProv: "openai",
+            K.transFallback: true,
             K.keyCode2: Int(kVK_ANSI_I),
             K.mods2: Int(cmdKey | shiftKey),
             K.keyCode3: Int(kVK_ANSI_2),
@@ -180,6 +184,7 @@ final class Settings: ObservableObject {
         geminiModel = d.string(forKey: K.geminiModel) ?? "gemini-flash-latest"
         transcriptionLanguage = d.string(forKey: K.transLang) ?? "es"
         aiProvider = d.string(forKey: K.aiProv) ?? "openai"
+        transcriptionFallback = d.object(forKey: K.transFallback) as? Bool ?? true
         voiceCombo = KeyCombo(keyCode: UInt32(d.integer(forKey: K.keyCode2)),
                               carbonModifiers: UInt32(d.integer(forKey: K.mods2)))
         captureCombo = KeyCombo(keyCode: UInt32(d.integer(forKey: K.keyCode3)),

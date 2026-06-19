@@ -229,11 +229,17 @@ final class ClipboardManager: ObservableObject {
 
     /// La transcripción falló: deja el elemento visible (con audio reproducible si lo hay) en vez de
     /// borrarlo en silencio, para que el usuario sepa qué pasó y pueda recuperarlo o eliminarlo.
-    func failVoiceNote(id: UUID) {
+    func failVoiceNote(id: UUID, reason: String? = nil) {
         voicePasteGuards.removeValue(forKey: id)
         guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
         items[idx].text = nil
-        items[idx].preview = items[idx].audioFileName != nil ? Self.voiceFailed : Self.voiceFailedNoAudio
+        // Muestra el motivo real (p. ej. "La clave de Gemini no es válida.") en vez de un genérico.
+        let fallback = items[idx].audioFileName != nil ? Self.voiceFailed : Self.voiceFailedNoAudio
+        if let reason, !reason.isEmpty {
+            items[idx].preview = "⚠️ \(reason)"
+        } else {
+            items[idx].preview = fallback
+        }
         storage.saveItems(items)
     }
 

@@ -1,0 +1,21 @@
+[Unit]
+Description=Klip uploader (endpoint estilo Lightshot)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/klip-uploader
+Restart=on-failure
+RestartSec=3
+User=www-data
+Group=www-data
+Environment=KLIP_ADDR=127.0.0.1:8080
+Environment=KLIP_BASE_URL=https://klip.integralmarketing.agency
+# Endurecimiento básico
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/klip/uploads
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

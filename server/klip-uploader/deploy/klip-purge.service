@@ -1,0 +1,6 @@
+[Unit]
+Description=Purga de capturas Klip con más de 3 días
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/find /var/klip/uploads -type f -mtime +3 -delete

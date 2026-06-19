@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Klip — Costos de transcripción (mockup)</title>
+<style>
+  :root{
+    --bg:#1e1e1f; --card:#2a2a2c; --card2:#323234; --stroke:#3a3a3d;
+    --text:#f2f2f3; --muted:#9a9a9f; --accent:#0a84ff; --green:#30d158; --amber:#ff9f0a; --red:#ff6961;
+    --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#161617;color:var(--text);font-family:var(--font);padding:40px 24px 80px;line-height:1.45}
+  h1{font-size:22px;font-weight:700;margin:0 0 6px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 30px}
+  .lane{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:28px}
+  @media(max-width:960px){.lane{grid-template-columns:1fr}}
+  .panel h2{font-size:13px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.3px;margin:0 0 4px}
+  .panel .desc{color:var(--muted);font-size:12.5px;margin:0 0 14px}
+  .tag{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;background:rgba(10,132,255,.18);color:#5ac8ff;margin-left:8px}
+  .win{background:var(--bg);border:1px solid var(--stroke);border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.55);overflow:hidden}
+  .titlebar{height:38px;display:flex;align-items:center;gap:8px;padding:0 14px;background:linear-gradient(#2d2d2f,#262628);border-bottom:1px solid #000}
+  .dot{width:12px;height:12px;border-radius:50%}.r{background:#ff5f57}.y{background:#febc2e}.g{background:#28c840}
+  .titlebar .t{font-size:13px;color:var(--muted);margin:0 auto;font-weight:500}
+  .body{padding:18px}
+  .sec-title{font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;margin:0 0 10px}
+  /* cost card */
+  .cost{background:var(--card);border-radius:10px;overflow:hidden;border:1px solid var(--stroke)}
+  .cost .hd{display:flex;justify-content:space-between;align-items:center;padding:11px 14px;border-bottom:1px solid var(--stroke)}
+  .cost .hd b{font-size:13px}
+  .cost .hd .when{font-size:11px;color:var(--muted)}
+  .crow{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--stroke)}
+  .crow:last-child{border-bottom:0}
+  .rank{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;flex:0 0 auto}
+  .rank.b1{background:rgba(48,209,88,.18);color:var(--green)}
+  .rank.b2{background:rgba(255,159,10,.18);color:var(--amber)}
+  .rank.b3{background:rgba(255,105,97,.18);color:var(--red)}
+  .crow .name{font-size:13px;flex:1}
+  .crow .name small{display:block;color:var(--muted);font-size:11px}
+  .crow .price{font-size:13px;font-variant-numeric:tabular-nums;font-weight:600}
+  .crow .per{font-size:11px;color:var(--muted)}
+  .pill{font-size:10px;font-weight:600;padding:1px 7px;border-radius:20px;background:rgba(48,209,88,.16);color:var(--green);margin-left:6px}
+  .note{font-size:11.5px;color:var(--muted);margin:12px 2px 0}
+  .actions{display:flex;gap:9px;margin-top:14px;flex-wrap:wrap}
+  .btn{height:30px;padding:0 13px;border-radius:8px;font-size:12.5px;font-weight:500;border:1px solid var(--stroke);background:var(--card2);color:var(--text);cursor:default;display:inline-flex;align-items:center;gap:6px}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .prompt{margin-top:12px;background:#111;border:1px solid var(--stroke);border-radius:8px;padding:10px 12px;font-family:ui-monospace,monospace;font-size:11.5px;color:#cfd3d6;white-space:pre-wrap}
+  .copied{color:var(--green);font-size:11px;margin-left:6px}
+  /* segmented (contexto) */
+  .seg{display:flex;background:var(--card2);border-radius:8px;padding:3px;margin-bottom:14px}
+  .seg div{flex:1;text-align:center;font-size:12.5px;padding:5px;border-radius:6px;color:var(--muted)}
+  .seg div.on{background:#4a4a4d;color:var(--text)}
+</style>
+</head>
+<body>
+  <h1>Klip · Costos de transcripción</h1>
+  <p class="sub">Recomendación de costos en la app + botón para verificar precios actuales con un prompt. Mockups, no funcionales.</p>
+
+  <div class="lane">
+
+    <!-- A: bloque en Preferencias -->
+    <div class="panel">
+      <h2>A · Bloque en Preferencias › Transcripción <span class="tag">Recomendado</span></h2>
+      <p class="desc">Siempre visible junto al selector de proveedor. Ordena de más barato a más caro y deja claro que los precios cambian, con un botón que copia un prompt para verificar.</p>
+      <div class="win">
+        <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="t">Preferencias de Klip</span></div>
+        <div class="body">
+          <div class="seg"><div class="on">Gemini</div><div>OpenAI</div></div>
+          <p class="sec-title">Costo aproximado por transcripción</p>
+          <div class="cost">
+            <div class="hd"><b>Comparativa</b><span class="when">ref. jun 2026 · ~1 min de audio</span></div>
+            <div class="crow"><span class="rank b1">1</span><span class="name">Gemini <small>gemini-flash-latest</small></span><span><span class="price">~$0.0026</span> <span class="per">/min</span><span class="pill">más barato</span></span></div>
+            <div class="crow"><span class="rank b2">2</span><span class="name">OpenAI mini <small>gpt-4o-mini-transcribe</small></span><span><span class="price">~$0.003</span> <span class="per">/min</span></span></div>
+            <div class="crow"><span class="rank b3">3</span><span class="name">OpenAI Whisper <small>whisper-1 (modelo viejo)</small></span><span><span class="price">~$0.006</span> <span class="per">/min</span></span></div>
+          </div>
+          <p class="note">Los precios de las APIs cambian seguido. Verifica los vigentes antes de decidir:</p>
+          <div class="actions">
+            <button class="btn primary">⧉ Copiar prompt para verificar precios <span class="copied">copiado ✓</span></button>
+            <button class="btn">Abrir precios de OpenAI ↗</button>
+            <button class="btn">Abrir precios de Gemini ↗</button>
+          </div>
+          <div class="prompt">Compara el costo ACTUAL (hoy) de transcribir audio con: Google Gemini (gemini-flash-latest), OpenAI gpt-4o-mini-transcribe y OpenAI whisper-1. Dame el precio por minuto de cada uno y cuál es el más barato. Cita las páginas oficiales de precios.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- B: tip al instalar / primer arranque -->
+    <div class="panel">
+      <h2>B · Tip al instalar / primer arranque</h2>
+      <p class="desc">Tarjeta que aparece una vez tras instalar, recomendando el proveedor más barato y enseñando a verificar costos. Luego vive permanente en Preferencias (A).</p>
+      <div class="win" style="max-width:420px">
+        <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="t">Klip</span></div>
+        <div class="body">
+          <div style="display:flex;gap:12px;align-items:flex-start">
+            <div style="width:40px;height:40px;border-radius:10px;background:rgba(48,209,88,.16);display:grid;place-items:center;font-size:20px;flex:0 0 auto">💸</div>
+            <div>
+              <p style="font-size:14px;font-weight:600;margin:2px 0 5px">Elige tu transcripción por costo</p>
+              <p style="font-size:12.5px;color:var(--muted);margin:0">Lo más barato hoy es <b style="color:var(--text)">Gemini</b> (~$0.0026/min), luego <b style="color:var(--text)">OpenAI mini</b> (~$0.003/min). Whisper cuesta el doble.</p>
+            </div>
+          </div>
+          <div class="prompt" style="margin-top:14px">Compara el costo actual de transcribir audio con Gemini flash, OpenAI gpt-4o-mini-transcribe y whisper-1. Precio por minuto y el más barato, citando precios oficiales.</div>
+          <div class="actions">
+            <button class="btn primary">⧉ Copiar prompt</button>
+            <button class="btn">Ir a Preferencias</button>
+            <button class="btn">Entendido</button>
+          </div>
+          <p class="note">No volver a mostrar · siempre disponible en Preferencias › Transcripción.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

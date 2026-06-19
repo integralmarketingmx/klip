@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Klip — Opciones UI: fallo de transcripción + fallback</title>
+<style>
+  :root{
+    --bg:#1e1e1f; --card:#2a2a2c; --card2:#323234; --stroke:#3a3a3d;
+    --text:#f2f2f3; --muted:#9a9a9f; --accent:#0a84ff; --green:#30d158;
+    --red:#ff453a; --amber:#ff9f0a; --field:#1b1b1d;
+    --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#161617;color:var(--text);font-family:var(--font);
+       padding:40px 24px 80px;line-height:1.45}
+  h1{font-size:22px;font-weight:700;margin:0 0 6px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 32px}
+  .lane{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:28px}
+  @media(max-width:980px){.lane{grid-template-columns:1fr}}
+  .panel{background:transparent}
+  .panel h2{font-size:13px;font-weight:600;color:var(--accent);letter-spacing:.3px;
+            text-transform:uppercase;margin:0 0 4px}
+  .panel .desc{color:var(--muted);font-size:12.5px;margin:0 0 14px}
+  .tag{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;
+       background:rgba(48,209,88,.16);color:var(--green);margin-left:8px;vertical-align:middle}
+  .tag.rec{background:rgba(10,132,255,.18);color:#5ac8ff}
+
+  /* ---- macOS window chrome ---- */
+  .win{background:var(--bg);border:1px solid var(--stroke);border-radius:14px;
+       box-shadow:0 24px 60px rgba(0,0,0,.55);overflow:hidden}
+  .titlebar{height:38px;display:flex;align-items:center;gap:8px;padding:0 14px;
+            background:linear-gradient(#2d2d2f,#262628);border-bottom:1px solid #000}
+  .dot{width:12px;height:12px;border-radius:50%}
+  .r{background:#ff5f57}.y{background:#febc2e}.g{background:#28c840}
+  .titlebar .t{font-size:13px;color:var(--muted);margin:0 auto;font-weight:500}
+  .body{padding:20px}
+
+  /* ---- alert / notification ---- */
+  .alert-icon{width:46px;height:46px;border-radius:11px;display:grid;place-items:center;
+              font-size:24px;flex:0 0 auto}
+  .alert-icon.warn{background:rgba(255,159,10,.16)}
+  .row{display:flex;gap:14px;align-items:flex-start}
+  .alert-title{font-size:15px;font-weight:600;margin:2px 0 4px}
+  .alert-msg{font-size:13px;color:var(--muted);margin:0}
+  code.err{background:#000;color:#ff8a80;padding:1px 6px;border-radius:5px;font-size:12px}
+
+  .field-label{font-size:12px;color:var(--muted);margin:18px 0 6px}
+  .field{display:flex;align-items:center;background:var(--field);border:1px solid var(--stroke);
+         border-radius:8px;padding:0 10px;height:34px}
+  .field input{flex:1;background:transparent;border:0;outline:0;color:var(--text);
+               font-size:13px;font-family:ui-monospace,monospace}
+  .field .eye{color:var(--muted);font-size:15px;cursor:default}
+  .hint{font-size:11px;color:var(--muted);margin:7px 0 0}
+  .hint a{color:var(--accent);text-decoration:none}
+
+  .btns{display:flex;gap:10px;justify-content:flex-end;margin-top:20px;flex-wrap:wrap}
+  .btn{height:32px;padding:0 16px;border-radius:8px;font-size:13px;font-weight:500;
+       border:1px solid var(--stroke);background:var(--card2);color:var(--text);cursor:default}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.ghost{background:transparent}
+
+  /* ---- preferences rows ---- */
+  .pref-card{background:var(--card);border-radius:10px;padding:4px 0;margin-top:2px}
+  .pref-row{display:flex;align-items:center;justify-content:space-between;
+            padding:13px 16px;border-bottom:1px solid var(--stroke)}
+  .pref-row:last-child{border-bottom:0}
+  .pref-row .lbl{font-size:13px}
+  .pref-row .lbl small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}
+  .select{background:var(--card2);border:1px solid var(--stroke);border-radius:7px;
+          height:28px;padding:0 26px 0 10px;font-size:13px;color:var(--text);
+          display:flex;align-items:center;position:relative}
+  .select::after{content:"⌄";position:absolute;right:9px;top:3px;color:var(--muted)}
+  /* switch */
+  .sw{width:40px;height:24px;border-radius:13px;background:var(--green);position:relative;flex:0 0 auto}
+  .sw.off{background:#48484a}
+  .sw i{position:absolute;top:2px;left:18px;width:20px;height:20px;border-radius:50%;
+        background:#fff;transition:.15s}
+  .sw.off i{left:2px}
+  .badge{display:inline-flex;align-items:center;gap:5px;font-size:12px}
+  .badge.ok{color:var(--green)} .badge.bad{color:var(--red)}
+  .pill{font-size:10.5px;padding:1px 7px;border-radius:20px;background:var(--card2);color:var(--muted)}
+  .note{font-size:11.5px;color:var(--muted);padding:12px 16px 4px}
+</style>
+</head>
+<body>
+  <h1>Klip · Opciones de UI para voz</h1>
+  <p class="sub">Dos piezas: (1) qué pasa cuando la transcripción falla, y (2) el fallback Gemini→OpenAI en Preferencias. Mockups, no funcionales.</p>
+
+  <div class="lane">
+
+    <!-- ============ A: NOTIFICACIÓN CON CAMPO INLINE ============ -->
+    <div class="panel">
+      <h2>A · Aviso de fallo con campo de clave <span class="tag rec">Recomendado</span></h2>
+      <p class="desc">Cuando Gemini rechaza la clave, sale este panel. Pegas una clave nueva ahí mismo, “Guardar y reintentar”, y la nota se transcribe sin entrar a Preferencias. Botón OK para cerrar.</p>
+      <div class="win">
+        <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="t">Klip</span></div>
+        <div class="body">
+          <div class="row">
+            <div class="alert-icon warn">⚠️</div>
+            <div>
+              <p class="alert-title">No se pudo transcribir la nota de voz</p>
+              <p class="alert-msg">Google Gemini rechazó la clave: <code class="err">API_KEY_INVALID</code>. Tu nota está guardada; pega una clave válida y reintenta.</p>
+            </div>
+          </div>
+
+          <p class="field-label">Nueva clave de Google Gemini</p>
+          <div class="field">
+            <input type="text" value="AIzaSy········································" spellcheck="false">
+            <span class="eye">􀋭</span>
+          </div>
+          <p class="hint">Obtén una en <a>aistudio.google.com</a>. Se guarda local (0600), nunca en el repo.</p>
+
+          <div class="btns">
+            <button class="btn ghost">OK</button>
+            <button class="btn">Usar OpenAI esta vez</button>
+            <button class="btn primary">Guardar y reintentar</button>
+          </div>
+        </div>
+      </div>
+      <p class="desc" style="margin-top:12px">↑ Hace justo lo que pediste: notificación + campo + guardar como preferencia, en un solo paso.</p>
+    </div>
+
+    <!-- ============ B: NOTIFICACIÓN SIMPLE (variante) ============ -->
+    <div class="panel">
+      <h2>B · Aviso simple (variante mínima)</h2>
+      <p class="desc">Más sobrio: solo avisa y te lleva a Preferencias. Menos pasos en el panel, pero tienes que ir a otra pantalla a pegar la clave.</p>
+      <div class="win">
+        <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="t">Klip</span></div>
+        <div class="body">
+          <div class="row">
+            <div class="alert-icon warn">⚠️</div>
+            <div>
+              <p class="alert-title">Transcripción fallida</p>
+              <p class="alert-msg">La clave de Gemini no es válida. La nota quedó en el historial para reintentar cuando arregles la clave.</p>
+            </div>
+          </div>
+          <div class="btns">
+            <button class="btn ghost">OK</button>
+            <button class="btn primary">Abrir Preferencias…</button>
+          </div>
+        </div>
+      </div>
+
+      <h2 style="margin-top:30px">B2 · Notificación del sistema (esquina)</h2>
+      <p class="desc">Estilo aviso nativo de macOS, no roba el foco. Bueno para fallos en segundo plano.</p>
+      <div class="win" style="max-width:360px">
+        <div class="body" style="padding:14px 16px">
+          <div class="row" style="gap:11px">
+            <div class="alert-icon warn" style="width:34px;height:34px;font-size:18px;border-radius:9px">🎙️</div>
+            <div style="flex:1">
+              <p class="alert-title" style="font-size:13.5px;margin:0 0 2px">Klip · no se transcribió</p>
+              <p class="alert-msg" style="font-size:12px">Clave de Gemini inválida. Toca para arreglar.</p>
+            </div>
+            <button class="btn" style="height:26px;padding:0 11px">Arreglar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ C: FALLBACK SWITCH EN PREFERENCIAS ============ -->
+    <div class="panel" style="grid-column:1/-1">
+      <h2>C · Fallback Gemini → OpenAI en Preferencias</h2>
+      <p class="desc">El switch que pediste: si Gemini falla, usa ChatGPT (OpenAI) automáticamente. Así una clave mala no te deja sin transcripción si la otra sí sirve.</p>
+      <div class="win" style="max-width:560px">
+        <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="t">Preferencias de Klip</span></div>
+        <div class="body" style="padding:16px">
+          <div class="pref-card">
+            <div class="pref-row">
+              <div class="lbl">Proveedor de transcripción
+                <small>Quién convierte tu voz en texto</small>
+              </div>
+              <div class="select">Google Gemini</div>
+            </div>
+            <div class="pref-row">
+              <div class="lbl">Usar OpenAI si Gemini falla
+                <small>Reintenta con ChatGPT cuando la clave de Gemini no sirve</small>
+              </div>
+              <div class="sw"><i></i></div>
+            </div>
+            <div class="pref-row">
+              <div class="lbl">Estado de las claves
+                <small>El check ahora valida que la clave <b>funcione</b>, no solo que exista</small>
+              </div>
+              <div style="display:flex;gap:14px;align-items:center">
+                <span class="badge bad">⛔ Gemini ····t8sU</span>
+                <span class="badge ok">✅ OpenAI ····JBQA</span>
+              </div>
+            </div>
+          </div>
+          <p class="note">Con el fallback activo y este estado, tu nota se transcribiría con OpenAI sin que tengas que tocar nada.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

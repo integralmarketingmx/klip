@@ -129,20 +129,27 @@ func handleSend(w http.ResponseWriter, r *http.Request) {
 				From: r.FormValue("smtpFrom"),
 			}
 		}
-		// Adjunto subido directamente (campo "file").
-		if f, hdr, err := r.FormFile("file"); err == nil {
-			defer f.Close()
-			b, err := io.ReadAll(f)
-			if err != nil {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no se pudo leer el adjunto: " + err.Error()})
-				return
-			}
-			if len(b) > 0 {
-				attachments = append(attachments, adjunto{
-					name:  hdr.Filename,
-					mime:  hdr.Header.Get("Content-Type"),
-					bytes: b,
-				})
+		// Adjuntos subidos directamente: TODAS las partes con name="file" (la captura + extras).
+		if r.MultipartForm != nil {
+			for _, hdr := range r.MultipartForm.File["file"] {
+				f, err := hdr.Open()
+				if err != nil {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no se pudo abrir el adjunto: " + err.Error()})
+					return
+				}
+				b, err := io.ReadAll(f)
+				f.Close()
+				if err != nil {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no se pudo leer el adjunto: " + err.Error()})
+					return
+				}
+				if len(b) > 0 {
+					attachments = append(attachments, adjunto{
+						name:  hdr.Filename,
+						mime:  hdr.Header.Get("Content-Type"),
+						bytes: b,
+					})
+				}
 			}
 		}
 	default: // JSON

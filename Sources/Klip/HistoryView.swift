@@ -611,8 +611,8 @@ struct ItemRow: View {
             } else if item.kind == .image {
                 iconButton("doc.on.doc", L10n.t("row.copy")) { onPick(item) }
                 if item.imageFileName != nil {
-                    // Ver en grande → reabre el anotador con esta imagen (por si quiere anotar más).
-                    iconButton("arrow.up.left.and.arrow.down.right", L10n.t("row.viewbig")) {
+                    // Lápiz de edición → reabre el anotador con esta imagen (por si quiere anotar más).
+                    iconButton("pencil.tip.crop.circle", L10n.t("row.viewbig")) {
                         onAnnotate(item)
                     }
                 }

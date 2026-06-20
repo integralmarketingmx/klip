@@ -391,9 +391,39 @@ final class AnnotationCanvasNSView: NSView {
     func addText(_ s: String, at p: CGPoint) {
         let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty else { return }
-        annotations.append(Annotation(tool: .text, color: color, width: lineWidth,
-                                      start: p, end: p, text: t, fontSize: currentFontSize))
+        let a = Annotation(tool: .text, color: color, width: lineWidth,
+                           start: p, end: p, text: t, fontSize: currentFontSize)
+        annotations.append(a)
+        selectedTextID = a.id      // seleccionar → los botones de tamaño y mover/copiar aplican ya
+        redoStack.removeAll()
+        clearedBackup = nil
         needsDisplay = true
+    }
+
+    /// Copia el texto/emoji de la anotación seleccionada al portapapeles. Devuelve false si no hay
+    /// nada de texto seleccionado (para que ⌘C recaiga en "copiar la imagen completa").
+    func copySelectedText() -> Bool {
+        guard let id = selectedTextID,
+              let a = annotations.first(where: { $0.id == id }),
+              !a.text.isEmpty else { return false }
+        let pb = NSPasteboard.general; pb.clearContents(); pb.setString(a.text, forType: .string)
+        return true
+    }
+
+    /// Pega texto/emoji del portapapeles como una anotación nueva (duplica desplazado si había una
+    /// selección; si no, lo coloca en el centro del lienzo).
+    @discardableResult
+    func pasteText() -> Bool {
+        guard let s = NSPasteboard.general.string(forType: .string),
+              !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+        let p: CGPoint
+        if let id = selectedTextID, let a = annotations.first(where: { $0.id == id }) {
+            p = CGPoint(x: a.start.x + 16, y: a.start.y + 16)
+        } else {
+            p = CGPoint(x: bounds.midX, y: bounds.midY)
+        }
+        addText(s, at: p)
+        return true
     }
 
     func undo() {
@@ -492,12 +522,16 @@ struct AnnotationView: View {
     var displaySize: CGSize? = nil
     var onAddToKlip: (NSImage) -> Void
     var onClose: () -> Void
+    /// Enviar por email la imagen anotada (aplanada). Opcional: si nil, no se muestra el botón Email.
+    var onSendEmail: ((NSImage) -> Void)? = nil
 
     @StateObject private var handle = CanvasHandle()
     @State private var tool: AnnoTool = .arrow
     @State private var color: Color = .red
+    @State private var showEmoji = false
 
     private let palette: [Color] = [.red, .orange, .yellow, .green, .blue, .white, .black]
+    private let emojis = ["😀","👍","🔥","✅","❌","⭐️","➡️","❤️","⚠️","👀","🎯","💡"]
 
     private var canvasSize: CGSize { displaySize ?? image.size }
 
@@ -513,7 +547,11 @@ struct AnnotationView: View {
         }
         // Atajos de teclado del editor (botones ocultos: no saturan la barra).
         .background {
-            Button("") { copy() }.keyboardShortcut("c", modifiers: .command).hidden()
+            // ⌘C: si hay un emoji/texto seleccionado, copia ESE; si no, copia la imagen completa.
+            Button("") { if handle.view?.copySelectedText() != true { copy() } }
+                .keyboardShortcut("c", modifiers: .command).hidden()
+            // ⌘V: pega un emoji/texto del portapapeles como anotación (duplica si había selección).
+            Button("") { handle.view?.pasteText() }.keyboardShortcut("v", modifiers: .command).hidden()
             Button("") { handle.view?.undo() }.keyboardShortcut("z", modifiers: .command).hidden()
             Button("") { handle.view?.redo() }.keyboardShortcut("z", modifiers: [.command, .shift]).hidden()
             Button("") { save() }.keyboardShortcut("s", modifiers: .command).hidden()
@@ -547,6 +585,19 @@ struct AnnotationView: View {
                 .buttonStyle(.borderless).help("Texto más chico")
             Button { handle.view?.bumpFontSize(4) } label: { Image(systemName: "textformat.size.larger") }
                 .buttonStyle(.borderless).help("Texto más grande")
+            // Emoji: popover con emojis frecuentes; al elegir uno se coloca en el lienzo.
+            Button { showEmoji.toggle() } label: { Image(systemName: "face.smiling") }
+                .buttonStyle(.borderless).help("Insertar emoji")
+                .popover(isPresented: $showEmoji, arrowEdge: .bottom) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.fixed(34)), count: 6), spacing: 4) {
+                        ForEach(emojis, id: \.self) { e in
+                            Button { addEmoji(e); showEmoji = false } label: {
+                                Text(e).font(.system(size: 22))
+                            }.buttonStyle(.plain)
+                        }
+                    }
+                    .padding(10)
+                }
             Spacer()
             Button { handle.view?.undo() } label: { Image(systemName: "arrow.uturn.backward") }
                 .buttonStyle(.borderless).help("Deshacer")
@@ -556,6 +607,10 @@ struct AnnotationView: View {
             Button { copy() } label: { Label("Copiar", systemImage: "doc.on.doc") }
                 .help("Copiar al portapapeles (⌘C)")
             Button { save() } label: { Label("Guardar", systemImage: "square.and.arrow.down") }
+            if onSendEmail != nil {
+                Button { sendEmail() } label: { Label("Email", systemImage: "envelope") }
+                    .help("Enviar la imagen anotada por email (abre el compositor)")
+            }
             Button { addToKlip() } label: { Label("Copiar y añadir a Klip", systemImage: "plus") }
                 .buttonStyle(.borderedProminent)
                 .help("Copia al portapapeles y guarda en el historial de Klip")
@@ -566,6 +621,17 @@ struct AnnotationView: View {
     private func copy() {
         guard let img = handle.view?.flattened() else { return }
         let pb = NSPasteboard.general; pb.clearContents(); pb.writeObjects([img])
+    }
+    /// Coloca un emoji como anotación de texto en el centro del lienzo (se puede mover/redimensionar).
+    private func addEmoji(_ e: String) {
+        let center = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
+        handle.view?.addText(e, at: center)
+    }
+    /// Aplana la imagen anotada y la envía al compositor de email (cierra el editor).
+    private func sendEmail() {
+        guard let img = handle.view?.flattened(), let onSendEmail else { return }
+        onSendEmail(img)
+        onClose()
     }
     private func save() {
         guard let png = handle.view?.flattenedPNG() else { return }

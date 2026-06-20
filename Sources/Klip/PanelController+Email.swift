@@ -31,6 +31,21 @@ extension PanelController {
         }
     }
 
+    /// Abre el compositor de email con una imagen ya anotada (desde el botón "Email" del anotador).
+    /// Sube best-effort para obtener slug de correlación; el PNG va adjunto de todos modos.
+    func composeEmailWithImage(_ image: NSImage) {
+        guard let png = Storage.shared.pngData(from: image) else { return }
+        Task { @MainActor in
+            var slug = ""
+            if let link = try? await UploaderClient.shared.upload(pngData: png, ocrText: nil) {
+                slug = (link.lastPathComponent as NSString).deletingPathExtension
+            }
+            presentEmailComposer(slug: slug, attachment: png,
+                                 subject: "Captura de Klip",
+                                 body: "Te comparto una captura desde Klip.")
+        }
+    }
+
     /// Presenta la ventana del compositor SwiftUI.
     private func presentEmailComposer(slug: String, attachment: Data?, subject: String, body: String) {
         let view = EmailComposerView(

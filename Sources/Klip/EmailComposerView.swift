@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 /// Compositor de email para enviar una captura por correo (vía el server Klip /send).
 /// Campos Para/CC/CCO, asunto, notas (cuerpo) y un toggle "al dueño / a otra persona".
@@ -30,6 +31,7 @@ struct EmailComposerView: View {
     @State private var sending = false
     @State private var errorText: String?
     @State private var sent = false
+    @State private var extraAttachments: [MailAttachment] = []
 
     @ObservedObject private var settings = Settings.shared
 
@@ -44,6 +46,9 @@ struct EmailComposerView: View {
         _subject = State(initialValue: initialSubject)
         _bodyText = State(initialValue: initialBody)
         _to = State(initialValue: ownerEmail)
+        // Si no hay dueño del link (yo soy el creador del klip), arranca en "a otra persona":
+        // no tiene sentido ofrecer "al dueño" porque el dueño soy yo.
+        _audience = State(initialValue: ownerEmail.isEmpty ? .other : .owner)
     }
 
     var body: some View {
@@ -52,7 +57,9 @@ struct EmailComposerView: View {
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    audienceSegment
+                    // El selector "al dueño / a otra persona" solo aparece cuando hay un dueño del
+                    // link (klip de otra persona). Si yo soy el creador, voy directo al destinatario.
+                    if !ownerEmail.isEmpty { audienceSegment }
                     field(label: "Para", text: $to, placeholder: "destinatario@empresa.com")
                     HStack {
                         Spacer()
@@ -76,17 +83,17 @@ struct EmailComposerView: View {
                     }
 
                     if attachment != nil {
-                        HStack(spacing: 10) {
-                            Image(systemName: "paperclip").foregroundStyle(.secondary)
-                            VStack(alignment: .leading) {
-                                Text("captura.png").font(.system(size: 13, weight: .medium))
-                                Text("PNG · se adjunta al correo").font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                        }
-                        .padding(10)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.05)))
+                        attachmentRow(name: "captura.png", detail: "PNG · se adjunta al correo", onRemove: nil)
                     }
+                    ForEach(extraAttachments) { att in
+                        attachmentRow(name: att.name,
+                                      detail: "\(att.mime) · \(byteLabel(att.data.count))",
+                                      onRemove: { extraAttachments.removeAll { $0.id == att.id } })
+                    }
+                    Button { addAttachment() } label: {
+                        Label("Adjuntar archivo…", systemImage: "paperclip.badge.plus")
+                    }
+                    .buttonStyle(.link).font(.caption)
 
                     if let errorText {
                         Text(errorText).font(.caption).foregroundStyle(.red)
@@ -204,6 +211,7 @@ struct EmailComposerView: View {
             to: split(to), cc: split(cc), bcc: split(bcc),
             subject: subject, body: bodyText, slug: slug,
             attachment: attachment,
+            extraAttachments: extraAttachments,
             method: settings.mailMethod.rawValue
         )
 
@@ -249,5 +257,55 @@ struct EmailComposerView: View {
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+    }
+
+    /// Fila visual de un adjunto. Con `onRemove` muestra la ✕ (solo para los extras del usuario).
+    private func attachmentRow(name: String, detail: String, onRemove: (() -> Void)?) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "paperclip").foregroundStyle(.secondary)
+            VStack(alignment: .leading) {
+                Text(name).font(.system(size: 13, weight: .medium)).lineLimit(1)
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            if let onRemove {
+                Button { onRemove() } label: { Image(systemName: "xmark.circle.fill") }
+                    .buttonStyle(.plain).foregroundStyle(.secondary)
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.05)))
+    }
+
+    /// Abre un NSOpenPanel para elegir archivos y los agrega como adjuntos extra.
+    private func addAttachment() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK else { return }
+        let maxBytes = 20 * 1024 * 1024   // límite por archivo: 20 MB
+        for url in panel.urls {
+            guard let data = try? Data(contentsOf: url) else { continue }
+            if data.count > maxBytes {
+                errorText = "“\(url.lastPathComponent)” supera 20 MB y no se adjuntó."
+                continue
+            }
+            let mime = mimeType(for: url)
+            extraAttachments.append(MailAttachment(name: url.lastPathComponent, mime: mime, data: data))
+        }
+    }
+
+    private func mimeType(for url: URL) -> String {
+        if let t = UTType(filenameExtension: url.pathExtension), let m = t.preferredMIMEType {
+            return m
+        }
+        return "application/octet-stream"
+    }
+
+    private func byteLabel(_ n: Int) -> String {
+        let kb = Double(n) / 1024
+        if kb < 1024 { return String(format: "%.0f KB", kb) }
+        return String(format: "%.1f MB", kb / 1024)
     }
 }

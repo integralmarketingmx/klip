@@ -54,7 +54,8 @@ extension PanelController {
             image: image,
             displaySize: displaySize,
             onAddToKlip: { [weak self] img in self?.manager.addCapturedImage(img) },
-            onClose: { [weak self] in self?.annotationWindow?.close() })
+            onClose: { [weak self] in self?.annotationWindow?.close() },
+            onSendEmail: { [weak self] img in self?.composeEmailWithImage(img) })
         let w = NSWindow(
             contentRect: NSRect(x: 0, y: 0,
                                 width: displaySize.width,

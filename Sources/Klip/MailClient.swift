@@ -40,14 +40,24 @@ struct MailDraft {
     var subject: String
     var body: String
     var slug: String                 // slug Klip para correlación (puede ir vacío)
-    var attachment: Data?            // PNG opcional a adjuntar directamente
+    var attachment: Data?            // PNG opcional a adjuntar directamente (la captura)
     var attachmentName: String = "captura.png"
+    /// Adjuntos extra (archivos que el usuario agrega en el compositor).
+    var extraAttachments: [MailAttachment] = []
     /// Método de transporte para el backend: "oauth" (Google Workspace per-usuario, default) o "smtp".
     var method: String = "oauth"
     /// Config SMTP (solo si method == "smtp").
     var smtp: SMTPConfig?
     /// Access token del usuario (solo si method == "oauth").
     var accessToken: String?
+}
+
+/// Un adjunto de correo (archivo agregado por el usuario en el compositor).
+struct MailAttachment: Identifiable, Equatable {
+    let id = UUID()
+    var name: String
+    var mime: String
+    var data: Data
 }
 
 /// Cliente del endpoint POST /send del server Klip. Manda multipart si hay adjunto,
@@ -75,8 +85,8 @@ final class MailClient {
         req.setValue(token, forHTTPHeaderField: "X-Klip-Token")
         req.timeoutInterval = 60
 
-        if let png = draft.attachment {
-            // multipart/form-data con el adjunto.
+        if draft.attachment != nil || !draft.extraAttachments.isEmpty {
+            // multipart/form-data con uno o varios adjuntos (cada uno como otra parte "file").
             let boundary = "Boundary-\(UUID().uuidString)"
             var body = Data()
             func append(_ s: String) { if let d = s.data(using: .utf8) { body.append(d) } }
@@ -102,10 +112,14 @@ final class MailClient {
                 field("smtpPass", s.pass)
                 field("smtpFrom", s.from)
             }
-            append("--\(boundary)\r\n")
-            append("Content-Disposition: form-data; name=\"file\"; filename=\"\(draft.attachmentName)\"\r\n")
-            append("Content-Type: image/png\r\n\r\n")
-            body.append(png); append("\r\n")
+            func fileField(_ filename: String, mime: String, data: Data) {
+                append("--\(boundary)\r\n")
+                append("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\r\n")
+                append("Content-Type: \(mime)\r\n\r\n")
+                body.append(data); append("\r\n")
+            }
+            if let png = draft.attachment { fileField(draft.attachmentName, mime: "image/png", data: png) }
+            for att in draft.extraAttachments { fileField(att.name, mime: att.mime, data: att.data) }
             append("--\(boundary)--\r\n")
             req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
             req.httpBody = body

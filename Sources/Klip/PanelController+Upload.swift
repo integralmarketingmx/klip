@@ -12,8 +12,11 @@ extension PanelController {
         do {
             // Pasamos el OCR ya guardado del item para que el visor web lo muestre y lo use en las OG cards.
             let link = try await UploaderClient.shared.upload(image: img, ocrText: item.text)
-            manager.setClipboardText(link.absoluteString)   // evita re-capturar la URL como item nuevo
-            showUploadToast(link)
+            // El backend devuelve el PNG crudo (…/slug.png). Compartimos la PÁGINA VESTIDA (…/slug):
+            // logo, métricas, OCR copiable, botones y OG cards. Quitar la extensión da esa URL.
+            let pageLink = link.deletingPathExtension()
+            manager.setClipboardText(pageLink.absoluteString)   // evita re-capturar la URL como item nuevo
+            showUploadToast(pageLink)
         } catch {
             let msg = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             showAlert("No se pudo subir la imagen", msg)

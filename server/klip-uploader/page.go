@@ -25,27 +25,51 @@ var tmpl = template.Must(template.New("page").Parse(pageHTMLRaw))
 
 // strings de i18n (ES por defecto, EN opcional). Nada hardcodeado fuera de este dict.
 type dict struct {
-	Lang             string
-	DownloadMac      string
-	CopyLink         string
-	Download         string
-	CopyImage        string
-	OCRTitle         string
-	CopyText         string
-	MadeWith         string
-	Privacy          string
-	AutoDeletes      string
-	UploadedAgo      string // "subido hace %s" / "uploaded %s ago"
-	ExpiresIn        string // "se borra en %s" / "deletes in %s"
-	ExpiresInBadge   string
-	Views            string
-	NotFoundTitle    string
-	NotFoundBody     string
-	NotFoundCTA      string
-	LinkCopied       string
-	ImageCopied      string
-	TextCopied       string
+	Lang               string
+	DownloadMac        string
+	CopyLink           string
+	Download           string
+	CopyImage          string
+	OCRTitle           string
+	CopyText           string
+	MadeWith           string
+	Privacy            string
+	AutoDeletes        string
+	UploadedAgo        string // "subido hace %s" / "uploaded %s ago"
+	ExpiresIn          string // "se borra en %s" / "deletes in %s"
+	ExpiresInBadge     string
+	Views              string
+	NotFoundTitle      string
+	NotFoundBody       string
+	NotFoundCTA        string
+	LinkCopied         string
+	ImageCopied        string
+	TextCopied         string
 	CopyImgUnsupported string
+	// Anotador web (Sprint 2)
+	Annotate      string // botón "✏️ Anotar"
+	EditorTitle   string
+	ToolArrow     string
+	ToolRect      string
+	ToolEllipse   string
+	ToolLine      string
+	ToolText      string
+	ToolHighlight string
+	ToolNumber    string
+	ToolBlur      string
+	Undo          string
+	Clear         string
+	UploadBack    string // "Subir de vuelta"
+	Uploading     string
+	NewLinkReady  string
+	UploadFailed  string
+	// Nota de voz (Sprint 2)
+	VoiceTitle       string // "Nota de voz"
+	TranscriptTitle  string // "Transcripción"
+	CopyTranscript   string
+	DownloadAudio    string
+	TranscriptCopied string
+	NoTranscript     string
 }
 
 var dicts = map[string]dict{
@@ -55,11 +79,19 @@ var dicts = map[string]dict{
 		OCRTitle: "Texto detectado (OCR)", CopyText: "Copiar texto",
 		MadeWith: "Hecho con", Privacy: "Privacidad", AutoDeletes: "Se autoelimina en 3 días",
 		UploadedAgo: "subido hace %s", ExpiresIn: "se borra en %s", ExpiresInBadge: "Se borra en %s",
-		Views: "%d vistas",
+		Views:         "%d vistas",
 		NotFoundTitle: "Esta captura ya no está", NotFoundBody: "El link expiró o nunca existió. Los links de Klip se autoeliminan a los 3 días.",
 		NotFoundCTA: "Crear la tuya con Klip",
-		LinkCopied: "Link copiado", ImageCopied: "Imagen copiada", TextCopied: "Texto copiado",
+		LinkCopied:  "Link copiado", ImageCopied: "Imagen copiada", TextCopied: "Texto copiado",
 		CopyImgUnsupported: "Tu navegador no permite copiar imágenes",
+		Annotate:           "Anotar", EditorTitle: "Anotar captura",
+		ToolArrow: "Flecha", ToolRect: "Rectángulo", ToolEllipse: "Elipse", ToolLine: "Línea",
+		ToolText: "Texto", ToolHighlight: "Resaltador", ToolNumber: "Número", ToolBlur: "Difuminar",
+		Undo: "Deshacer", Clear: "Limpiar", UploadBack: "Subir de vuelta", Uploading: "Subiendo…",
+		NewLinkReady: "Nuevo link listo y copiado", UploadFailed: "No se pudo subir",
+		VoiceTitle: "Nota de voz", TranscriptTitle: "Transcripción", CopyTranscript: "Copiar transcripción",
+		DownloadAudio: "Descargar audio", TranscriptCopied: "Transcripción copiada",
+		NoTranscript: "Sin transcripción",
 	},
 	"en": {
 		Lang: "en", DownloadMac: "Download Klip for Mac",
@@ -67,11 +99,19 @@ var dicts = map[string]dict{
 		OCRTitle: "Detected text (OCR)", CopyText: "Copy text",
 		MadeWith: "Made with", Privacy: "Privacy", AutoDeletes: "Auto-deletes in 3 days",
 		UploadedAgo: "uploaded %s ago", ExpiresIn: "deletes in %s", ExpiresInBadge: "Deletes in %s",
-		Views: "%d views",
+		Views:         "%d views",
 		NotFoundTitle: "This screenshot is gone", NotFoundBody: "The link expired or never existed. Klip links auto-delete after 3 days.",
 		NotFoundCTA: "Make yours with Klip",
-		LinkCopied: "Link copied", ImageCopied: "Image copied", TextCopied: "Text copied",
+		LinkCopied:  "Link copied", ImageCopied: "Image copied", TextCopied: "Text copied",
 		CopyImgUnsupported: "Your browser can't copy images",
+		Annotate:           "Annotate", EditorTitle: "Annotate screenshot",
+		ToolArrow: "Arrow", ToolRect: "Rectangle", ToolEllipse: "Ellipse", ToolLine: "Line",
+		ToolText: "Text", ToolHighlight: "Highlighter", ToolNumber: "Number", ToolBlur: "Blur",
+		Undo: "Undo", Clear: "Clear", UploadBack: "Upload back", Uploading: "Uploading…",
+		NewLinkReady: "New link ready and copied", UploadFailed: "Upload failed",
+		VoiceTitle: "Voice note", TranscriptTitle: "Transcript", CopyTranscript: "Copy transcript",
+		DownloadAudio: "Download audio", TranscriptCopied: "Transcript copied",
+		NoTranscript: "No transcript",
 	},
 }
 
@@ -93,19 +133,19 @@ func pickLang(r *http.Request) dict {
 type pageData struct {
 	D dict
 
-	Slug      string
-	NotFound  bool
-	HasOCR    bool
-	OCR       string
-	WxH       string
-	Dimensions string // alias humano
-	Width     int
-	Height    int
-	SizeHuman string
+	Slug        string
+	NotFound    bool
+	HasOCR      bool
+	OCR         string
+	WxH         string
+	Dimensions  string // alias humano
+	Width       int
+	Height      int
+	SizeHuman   string
 	UploadedAgo string
-	ExpiresIn string
+	ExpiresIn   string
 	ExpireBadge string
-	Views     int64
+	Views       int64
 
 	// URLs absolutas (https) para OG/Twitter y para los botones/JS.
 	PageURL  string
@@ -115,12 +155,27 @@ type pageData struct {
 
 	OGTitle string
 	OGDesc  string
+
+	// Nota de voz (kind == "voice").
+	IsVoice       bool
+	AudioURL      string
+	AudioExt      string // "m4a", "mp3", … sin punto, para mostrar
+	DurationHuman string // "0:42"
+	HasTranscript bool
+	Transcript    string
 }
 
 // servePage renderiza la página del slug o un 404 vestido si no existe.
 func servePage(w http.ResponseWriter, r *http.Request, slug string) {
 	d := pickLang(r)
 	base := strings.TrimRight(baseURL, "/")
+
+	// Lee el sidecar primero: una nota de voz no tiene binario de imagen.
+	m, hasMeta := readMeta(slug)
+	if hasMeta && m.Kind == "voice" {
+		servePageVoice(w, r, slug, d, base, m)
+		return
+	}
 
 	// Localiza el binario del slug (png/jpg/jpeg/gif).
 	imgName, ok := findImage(slug)
@@ -133,7 +188,6 @@ func servePage(w http.ResponseWriter, r *http.Request, slug string) {
 		return
 	}
 
-	m, hasMeta := readMeta(slug)
 	created := time.Now()
 	if hasMeta && m.Created > 0 {
 		created = time.Unix(m.Created, 0)

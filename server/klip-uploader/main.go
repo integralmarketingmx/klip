@@ -29,8 +29,8 @@ import (
 
 const (
 	maxBytes = 25 << 20 // 25 MB
-	slugLen   = 6
-	alphabet  = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789" // sin 0/O/1/l/I
+	slugLen  = 6
+	alphabet = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789" // sin 0/O/1/l/I
 
 	retentionHours = 72 // los links viven 3 días (72h)
 	ogW            = 1200
@@ -52,8 +52,13 @@ type meta struct {
 	Created   int64  `json:"created"`   // unix segundos
 	ExpiresAt int64  `json:"expiresAt"` // created + 72h
 	OCR       string `json:"ocr"`
-	Kind      string `json:"kind"` // "image"
+	Kind      string `json:"kind"` // "image" | "voice"
 	Views     int64  `json:"views"`
+
+	// Campos de nota de voz (kind == "voice").
+	Ext        string `json:"ext,omitempty"`        // extensión del binario de audio (.m4a/.mp3/...)
+	Transcript string `json:"transcript,omitempty"` // transcripción del audio
+	Duration   int    `json:"duration,omitempty"`   // duración en segundos
 }
 
 // viewCounters acumula vistas en memoria por slug; se vuelcan al sidecar.
@@ -89,8 +94,16 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
+	// kind=voice → nota de voz; cualquier otra cosa → imagen (comportamiento previo).
+	kind := strings.TrimSpace(r.FormValue("kind"))
+
 	ext := strings.ToLower(filepath.Ext(hdr.Filename))
-	if ext == "" || len(ext) > 5 {
+	if kind == "voice" {
+		// Para audio respetamos la extensión válida; si no, .m4a por defecto.
+		if !isAudioExt(ext) {
+			ext = ".m4a"
+		}
+	} else if ext == "" || len(ext) > 5 {
 		ext = ".png"
 	}
 	slug := randSlug(slugLen)
@@ -108,11 +121,17 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// La respuesta al cliente NO cambia: {"url": "…/slug.png"}. Lo sidecar/preview es best-effort.
+	// La respuesta al cliente NO cambia: {"url": "…/slug.<ext>"}. Lo sidecar/preview es best-effort.
 	url := strings.TrimRight(baseURL, "/") + "/" + name
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"url": url})
 	log.Printf("subido %s (%d bytes) -> %s", name, written, url)
+
+	// Rama nota de voz: sidecar con transcripción/duración, sin preview OG de imagen.
+	if kind == "voice" {
+		writeVoiceMeta(slug, ext, written, r)
+		return
+	}
 
 	// Texto OCR opcional del campo multipart.
 	ocr := strings.TrimSpace(r.FormValue("ocr"))
@@ -241,8 +260,8 @@ func handleRoot(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "klip uploader", http.StatusOK)
 		return
 	}
-	// Binarios: se sirven crudos (incluye <slug>-og.png).
-	if strings.HasSuffix(p, ".png") || strings.HasSuffix(p, ".jpg") || strings.HasSuffix(p, ".jpeg") || strings.HasSuffix(p, ".gif") {
+	// Binarios: se sirven crudos (incluye <slug>-og.png y notas de voz .m4a/.mp3/...).
+	if strings.HasSuffix(p, ".png") || strings.HasSuffix(p, ".jpg") || strings.HasSuffix(p, ".jpeg") || strings.HasSuffix(p, ".gif") || isAudioExt(strings.ToLower(filepath.Ext(p))) {
 		serveBinary(w, r, p)
 		return
 	}

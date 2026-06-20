@@ -16,7 +16,14 @@ import IOKit
 /// lo que rompía la transcripción.
 enum SecretStore {
     /// Cada proveedor guarda su clave en un archivo distinto (0600) del directorio de la app.
-    enum Key: String { case openai = "openai.key", gemini = "gemini.key" }
+    /// - smtp: contraseña SMTP del usuario (método de envío "SMTP").
+    /// - googleOAuth: refresh token del usuario (método "Iniciar sesión con Google").
+    enum Key: String {
+        case openai = "openai.key"
+        case gemini = "gemini.key"
+        case smtp = "smtp.pass"
+        case googleOAuth = "google.refresh"
+    }
 
     /// Prefijo que marca un archivo como cifrado por nosotros (formato v1). Lo que NO empiece con
     /// este prefijo se trata como texto plano de una versión anterior y se migra al primer `set`.

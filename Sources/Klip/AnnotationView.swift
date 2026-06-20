@@ -63,6 +63,7 @@ final class AnnotationCanvasNSView: NSView {
     private var movingTextID: UUID?
     private var moveOffset = CGSize.zero
     private var redoStack: [Annotation] = []     // para Rehacer (⌘⇧Z)
+    private var clearedBackup: [Annotation]?     // respaldo del último "Limpiar todo" para poder deshacerlo (⌘Z)
     var onToolPick: ((AnnoTool) -> Void)?        // el menú contextual avisa a SwiftUI qué herramienta eligió
 
     init(image: NSImage) {
@@ -203,6 +204,7 @@ final class AnnotationCanvasNSView: NSView {
         if d.tool == .pen || hypot(d.end.x - d.start.x, d.end.y - d.start.y) > 3 {
             annotations.append(d)
             redoStack.removeAll()   // una acción nueva invalida el historial de rehacer
+            clearedBackup = nil     // …y también el respaldo de "Limpiar todo"
         }
         draft = nil
         needsDisplay = true
@@ -239,7 +241,7 @@ final class AnnotationCanvasNSView: NSView {
         let undoIt = menu.addItem(withTitle: "Deshacer", action: #selector(ctxUndo), keyEquivalent: "z")
         let redoIt = menu.addItem(withTitle: "Rehacer", action: #selector(ctxRedo), keyEquivalent: "Z")
         redoIt.isEnabled = !redoStack.isEmpty
-        undoIt.isEnabled = !annotations.isEmpty || activeTextField != nil
+        undoIt.isEnabled = !annotations.isEmpty || activeTextField != nil || clearedBackup != nil
         if selectedTextID != nil {
             menu.addItem(withTitle: "Borrar selección", action: #selector(ctxDelete), keyEquivalent: "\u{8}")
         }
@@ -319,6 +321,7 @@ final class AnnotationCanvasNSView: NSView {
         if let id { a.id = id }   // conserva identidad al reeditar
         annotations.append(a)
         redoStack.removeAll()
+        clearedBackup = nil
         selectedTextID = a.id
         needsDisplay = true
     }
@@ -397,6 +400,13 @@ final class AnnotationCanvasNSView: NSView {
         if activeTextField != nil {
             activeTextField?.removeFromSuperview(); activeTextField = nil; editingID = nil; return
         }
+        // Deshacer un "Limpiar todo": si lo último fue limpiar (lienzo vacío con respaldo), lo restaura entero.
+        if annotations.isEmpty, let backup = clearedBackup {
+            annotations = backup
+            clearedBackup = nil
+            selectedTextID = nil; needsDisplay = true
+            return
+        }
         if !annotations.isEmpty {
             redoStack.append(annotations.removeLast())
             selectedTextID = nil; needsDisplay = true
@@ -404,6 +414,8 @@ final class AnnotationCanvasNSView: NSView {
     }
     func clearAll() {
         activeTextField?.removeFromSuperview(); activeTextField = nil
+        clearedBackup = annotations.isEmpty ? nil : annotations   // respaldo para poder deshacer (⌘Z)
+        redoStack.removeAll()
         annotations.removeAll(); selectedTextID = nil; needsDisplay = true
     }
 

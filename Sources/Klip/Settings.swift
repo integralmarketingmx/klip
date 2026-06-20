@@ -115,6 +115,7 @@ final class Settings: ObservableObject {
         static let keyCode3   = "captureHotKeyCode"
         static let mods3      = "captureHotKeyModifiers"
         static let uiLang     = "uiLanguage"
+        static let uploadEndpoint = "uploadEndpoint"
     }
 
     @Published var maxItems: Int          { didSet { d.set(maxItems, forKey: K.maxItems) } }
@@ -152,6 +153,9 @@ final class Settings: ObservableObject {
         d.set(Int(captureCombo.carbonModifiers), forKey: K.mods3)
     } }
     @Published var uiLanguage: String     { didSet { d.set(uiLanguage, forKey: K.uiLang) } }
+    /// Servidor de subida de capturas (estilo Lightshot). POST multipart a `<endpoint>/upload`,
+    /// devuelve `{"url": "…"}`. Los links se auto-purgan a los 3 días (etapa de pruebas).
+    @Published var uploadEndpoint: String { didSet { d.set(uploadEndpoint, forKey: K.uploadEndpoint) } }
 
     /// Toggle simple que controla los tres filtros de privacidad a la vez.
     var ignoreSensitive: Bool {
@@ -183,7 +187,8 @@ final class Settings: ObservableObject {
             K.mods2: Int(cmdKey | shiftKey),
             K.keyCode3: Int(kVK_ANSI_2),
             K.mods3: Int(cmdKey | shiftKey),
-            K.uiLang: "es"
+            K.uiLang: "es",
+            K.uploadEndpoint: "https://klip.integralmarketing.agency"
         ])
         maxItems = d.integer(forKey: K.maxItems)
         combo = KeyCombo(keyCode: UInt32(d.integer(forKey: K.keyCode)),
@@ -208,6 +213,7 @@ final class Settings: ObservableObject {
         captureCombo = KeyCombo(keyCode: UInt32(d.integer(forKey: K.keyCode3)),
                                 carbonModifiers: UInt32(d.integer(forKey: K.mods3)))
         uiLanguage = d.string(forKey: K.uiLang) ?? "es"
+        uploadEndpoint = d.string(forKey: K.uploadEndpoint) ?? "https://klip.integralmarketing.agency"
     }
 
     func addExcludedApp(_ id: String) {

@@ -7,6 +7,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
@@ -18,10 +19,12 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	xdraw "golang.org/x/image/draw"
@@ -82,15 +85,41 @@ func main() {
 	http.HandleFunc("/", handleRoot)
 	// INBOX por MX propio (Sprint 4): arranca el receptor SMTP en una goroutine
 	// SOLO si KLIP_MX_DOMAIN está seteado (ver smtp_server.go). Si no, no arranca.
+	var smtpShutdown func(context.Context) error
 	if d := mxDomain(); d != "" {
+		start, shutdown := newSMTPServer(smtpAddr(), d)
+		smtpShutdown = shutdown
 		go func() {
-			if err := startSMTPServer(smtpAddr(), d); err != nil {
+			if err := start(); err != nil {
 				log.Printf("klip-smtp: receptor SMTP terminó con error: %v", err)
 			}
 		}()
 	}
-	log.Printf("klip-uploader escuchando en %s, sirviendo %s", addr, baseURL)
-	log.Fatal(http.ListenAndServe(addr, nil))
+
+	srv := &http.Server{Addr: addr}
+	go func() {
+		log.Printf("klip-uploader escuchando en %s, sirviendo %s", addr, baseURL)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("klip-uploader: error al servir HTTP: %v", err)
+		}
+	}()
+
+	// Shutdown graceful: ante SIGINT/SIGTERM se drenan conexiones (HTTP y SMTP) en lugar de
+	// matar el proceso a media escritura. Las escrituras de sidecars ya son atómicas.
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	<-sig
+	log.Printf("klip-uploader: señal recibida, cerrando de forma graceful…")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if smtpShutdown != nil {
+		if err := smtpShutdown(ctx); err != nil {
+			log.Printf("klip-smtp: error en shutdown: %v", err)
+		}
+	}
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("klip-uploader: error en shutdown HTTP: %v", err)
+	}
 }
 
 func handleUpload(w http.ResponseWriter, r *http.Request) {

@@ -238,14 +238,22 @@ final class ClipboardManager: ObservableObject, ClipboardStoring {
     func finishVoiceNote(id: UUID, text: String) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let canPaste = voicePasteGuards.removeValue(forKey: id).map { $0 == NSPasteboard.general.changeCount } ?? false
-        guard let idx = items.firstIndex(where: { $0.id == id }) else {
+        guard items.contains(where: { $0.id == id }) else {
             if !clean.isEmpty, canPaste { setClipboardText(clean) }   // el placeholder ya no existe: no perder el texto
+            return
+        }
+        // Recorta PRIMERO, mientras la nota sigue marcada como "transcribiendo" y por tanto
+        // protegida del trim. Si cambiáramos el preview antes, una transcripción recién llegada
+        // podría perderse al recortar (deja de estar protegida). Tras el trim re-localizamos por id.
+        trimAndSave()
+        guard let idx = items.firstIndex(where: { $0.id == id }) else {
+            if !clean.isEmpty, canPaste { setClipboardText(clean) }
             return
         }
         items[idx].text = clean.isEmpty ? nil : clean
         items[idx].preview = clean.isEmpty ? Self.voiceFailed : Self.voicePreview(clean)
         let item = items[idx]
-        trimAndSave()
+        storage.saveItems(items)
         if !clean.isEmpty, canPaste { copyToPasteboard(item) }   // solo si nada cambió el portapapeles
     }
 
@@ -350,14 +358,22 @@ final class ClipboardManager: ObservableObject, ClipboardStoring {
         let toDelete = items.filter { !$0.pinned && $0.createdAt >= cutoff }
         guard !toDelete.isEmpty else { return 0 }
         AudioPlayer.shared.stop()
+
+        // Persiste PRIMERO el historial recortado; solo si el guardado quedó en disco borramos los
+        // archivos asociados. Así evitamos el estado inconsistente "items.json referencia archivos
+        // ya borrados" si el guardado fallara. Si falla, restauramos y no borramos nada.
+        let ids = Set(toDelete.map { $0.id })
+        let snapshot = items
+        items.removeAll { ids.contains($0.id) }
+        guard storage.saveItems(items) else {
+            items = snapshot   // rollback en memoria: el disco sigue intacto
+            return 0
+        }
         for it in toDelete {
             if it.kind == .image, let f = it.imageFileName { storage.deleteImage(fileName: f) }
             if let af = it.audioFileName { AudioPlayer.shared.stopIfPlaying(af); storage.deleteAudio(fileName: af) }
             voicePasteGuards.removeValue(forKey: it.id)
         }
-        let ids = Set(toDelete.map { $0.id })
-        items.removeAll { ids.contains($0.id) }
-        storage.saveItems(items)
         return toDelete.count
     }
 

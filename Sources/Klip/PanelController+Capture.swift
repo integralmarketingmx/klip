@@ -68,6 +68,17 @@ extension PanelController {
         w.hidesOnDeactivate = false
         w.contentView = NSHostingView(rootView: view)
         w.center()
+        // Cierra una ventana de anotación previa (evita acumular NSWindow huérfanas con
+        // isReleasedWhenClosed=false) y limpia la referencia al cerrarse por CUALQUIER vía
+        // (X roja incluida), no solo por el callback onClose de la vista.
+        annotationWindow?.delegate = nil
+        annotationWindow?.close()
+        let closer = WindowCloser { [weak self, weak w] in
+            if self?.annotationWindow === w { self?.annotationWindow = nil }
+            self?.annotationCloser = nil
+        }
+        w.delegate = closer
+        annotationCloser = closer
         annotationWindow = w
         NSApp.activate(ignoringOtherApps: true)
         w.makeKeyAndOrderFront(nil)

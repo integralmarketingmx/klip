@@ -83,11 +83,12 @@ final class Storage: PersistentStoring {
     /// Persiste el historial. NO lanza por fuera (firma estable para los llamadores), pero por dentro
     /// reintenta con backoff corto. Si los 3 intentos fallan, incrementa `persistenceErrorCount` y, al
     /// llegar a ≥3 fallos en racha, dispara un aviso no-modal (NotificationCenter) una sola vez.
-    func saveItems(_ items: [ClipboardItem]) {
+    @discardableResult
+    func saveItems(_ items: [ClipboardItem]) -> Bool {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted]
-        guard let data = try? encoder.encode(items) else { return }
+        guard let data = try? encoder.encode(items) else { return false }
 
         var lastError: Error?
         for attempt in 0..<3 {
@@ -96,7 +97,7 @@ final class Storage: PersistentStoring {
                 // El historial puede contener credenciales en texto: restringir a solo el usuario.
                 try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: itemsURL.path)
                 persistenceErrorCount = 0   // éxito: cortamos la racha
-                return
+                return true
             } catch {
                 lastError = error
                 if attempt < 2 { Thread.sleep(forTimeInterval: 0.05 * Double(attempt + 1)) }   // backoff corto
@@ -112,6 +113,7 @@ final class Storage: PersistentStoring {
                                                 object: nil, userInfo: ["message": msg])
             }
         }
+        return false
     }
 
     // MARK: - Imágenes

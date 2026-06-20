@@ -39,6 +39,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     var guideWindow: NSWindow?                // internal: usado por PanelController+Actions.swift
     var uploadWindow: NSWindow?               // internal: usado por PanelController+Actions.swift
     var annotationWindow: NSWindow?           // internal: usado por PanelController+Capture.swift
+    var annotationCloser: NSObject?           // retiene el delegate de cierre del anotador (delegate es weak)
     /// Confirmación breve no-modal de subida; se auto-cierra a los pocos segundos.
     var uploadToastWindow: NSWindow?          // internal: usado por PanelController+Upload.swift
     /// Ventana del compositor de email; usada por PanelController+Email.swift.

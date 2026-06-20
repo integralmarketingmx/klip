@@ -17,7 +17,9 @@ protocol PersistentStoring: AnyObject {
 
     // MARK: Historial (metadatos)
     func loadItems() -> [ClipboardItem]
-    func saveItems(_ items: [ClipboardItem])
+    /// Persiste el historial. Devuelve `true` si quedó escrito en disco, `false` si todos los
+    /// reintentos fallaron (los llamadores que borran archivos asociados deben respetar esto).
+    @discardableResult func saveItems(_ items: [ClipboardItem]) -> Bool
 
     // MARK: Imágenes
     @discardableResult

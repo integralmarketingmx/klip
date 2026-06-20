@@ -18,6 +18,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -46,9 +47,11 @@ func mxDomain() string { return strings.ToLower(strings.TrimSpace(envOr("KLIP_MX
 // smtpAddr devuelve la dirección de escucha del receptor SMTP.
 func smtpAddr() string { return envOr("KLIP_SMTP_ADDR", ":25") }
 
-// startSMTPServer arranca el receptor SMTP en `addr` para el dominio `domain`.
-// Bloquea (se llama dentro de una goroutine desde main.go).
-func startSMTPServer(addr, domain string) error {
+// newSMTPServer construye el receptor SMTP para `addr`/`domain` y devuelve dos closures:
+//   start    — bloquea sirviendo (se llama en una goroutine); devuelve nil en cierre limpio.
+//   shutdown — cierra el servidor de forma graceful (drena conexiones hasta el ctx).
+// Mantener el tipo *smtp.Server contenido aquí evita filtrar el import a main.go.
+func newSMTPServer(addr, domain string) (start func() error, shutdown func(context.Context) error) {
 	be := &klipBackend{domain: strings.ToLower(domain)}
 	s := smtp.NewServer(be)
 	s.Addr = addr
@@ -59,8 +62,15 @@ func startSMTPServer(addr, domain string) error {
 	s.MaxRecipients = 50
 	s.AllowInsecureAuth = true // sin TLS obligatorio: es recepción entrante de MX
 
-	log.Printf("klip-smtp escuchando en %s para dominio %s", addr, domain)
-	return s.ListenAndServe()
+	start = func() error {
+		log.Printf("klip-smtp escuchando en %s para dominio %s", addr, domain)
+		if err := s.ListenAndServe(); err != nil && err != smtp.ErrServerClosed {
+			return err
+		}
+		return nil
+	}
+	shutdown = func(ctx context.Context) error { return s.Shutdown(ctx) }
+	return start, shutdown
 }
 
 // klipBackend implementa smtp.Backend: crea una sesión por conexión.
@@ -214,8 +224,11 @@ func parseInboundMail(r io.Reader, rcptSlug string) (mxReply, error) {
 			break
 		}
 		if e != nil {
-			// Parte ilegible (charset/encoding desconocido): la saltamos.
-			continue
+			// Error de parte (charset/encoding desconocido o stream malformado): detenemos el
+			// recorrido. Antes hacía `continue`, que ante un error persistente (sin avanzar el
+			// reader) podía entrar en bucle infinito. Logueamos para diagnóstico.
+			log.Printf("klip-smtp: parte MIME ilegible para slug %s: %v", slug, e)
+			break
 		}
 		switch h := p.Header.(type) {
 		case *gomail.InlineHeader:

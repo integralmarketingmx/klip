@@ -26,6 +26,7 @@ struct HistoryView: View {
     @ObservedObject var settings = Settings.shared
     var onPick: (ClipboardItem) -> Void
     var onSaveImage: (ClipboardItem) -> Void
+    var onUploadLink: (ClipboardItem) async -> Void
     var onCopyMarkdown: (ClipboardItem) -> Void
     var onCopyAllMarkdown: () -> Void
     var onOpenPreferences: () -> Void
@@ -296,6 +297,7 @@ struct HistoryView: View {
                                 resetToken: selection.openToken,
                                 manager: manager,
                                 onPick: onPick, onSaveImage: onSaveImage,
+                                onUploadLink: onUploadLink,
                                 onCopyMarkdown: onCopyMarkdown, onOCR: { runOCR(item) },
                                 onRename: onRename, onRetryTranscription: onRetryTranscription,
                                 onSaveAsFile: onSaveAsFile, onCopyAsCode: onCopyAsCode,
@@ -411,6 +413,7 @@ struct ItemRow: View {
     @ObservedObject var manager: ClipboardManager
     var onPick: (ClipboardItem) -> Void
     var onSaveImage: (ClipboardItem) -> Void
+    var onUploadLink: (ClipboardItem) async -> Void
     var onCopyMarkdown: (ClipboardItem) -> Void
     var onOCR: () -> Void
     var onRename: (ClipboardItem) -> Void
@@ -424,6 +427,7 @@ struct ItemRow: View {
 
     @State private var hovering = false
     @State private var revealed = false
+    @State private var uploading = false   // subiendo a link: muestra ProgressView en vez del icono
 
     private var isCredential: Bool { item.isCredential == true }
     private var hasText: Bool { !(item.text?.isEmpty ?? true) }
@@ -607,6 +611,17 @@ struct ItemRow: View {
                     }
                 }
                 iconButton("square.and.arrow.down", L10n.t("row.save")) { onSaveImage(item) }
+                if uploading {
+                    ProgressView().controlSize(.small).frame(width: 18)
+                } else {
+                    iconButton("link", "Subir y copiar link") {
+                        uploading = true
+                        Task {
+                            await onUploadLink(item)
+                            uploading = false
+                        }
+                    }
+                }
                 iconButton("text.viewfinder", L10n.t("row.ocr")) { onOCR() }
             } else if isCredential {
                 iconButton("doc.on.doc", L10n.t("row.copy")) { onPick(item) }

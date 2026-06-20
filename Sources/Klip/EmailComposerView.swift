@@ -140,8 +140,7 @@ struct EmailComposerView: View {
     /// Texto del pie según el método elegido.
     private var methodHint: String {
         switch settings.mailMethod {
-        case .dwd:        return "🔒 Se envía vía Klip (Gmail Workspace). Tu cuenta queda como remitente."
-        case .oauth:      return "🔒 Se envía con tu cuenta de Google conectada."
+        case .oauth:      return "🔒 Se envía con tu cuenta de Google Workspace conectada (solo tú, como remitente)."
         case .smtp:       return "🔒 Se envía por tu servidor SMTP."
         case .systemMail: return "✉️ Se abrirá el compositor de Mail del sistema."
         }
@@ -231,8 +230,8 @@ struct EmailComposerView: View {
                 errorText = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 return
             }
-        case .dwd, .systemMail:
-            break   // dwd: comportamiento previo; systemMail no pasa por aquí
+        case .systemMail:
+            break   // systemMail no pasa por aquí (abre el compositor nativo)
         }
 
         do {

@@ -42,8 +42,8 @@ struct MailDraft {
     var slug: String                 // slug Klip para correlación (puede ir vacío)
     var attachment: Data?            // PNG opcional a adjuntar directamente
     var attachmentName: String = "captura.png"
-    /// Método de transporte para el backend: "dwd" (default), "smtp" u "oauth".
-    var method: String = "dwd"
+    /// Método de transporte para el backend: "oauth" (Google Workspace per-usuario, default) o "smtp".
+    var method: String = "oauth"
     /// Config SMTP (solo si method == "smtp").
     var smtp: SMTPConfig?
     /// Access token del usuario (solo si method == "oauth").

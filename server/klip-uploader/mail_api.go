@@ -233,8 +233,20 @@ func handleSend(w http.ResponseWriter, r *http.Request) {
 		sendErr = sendViaSMTP(ctx, *req.SMTP, req.From, req.To, req.CC, req.BCC, req.Subject, req.Body, req.Slug, attachments)
 	case "oauth":
 		sendErr = sendViaOAuth(ctx, req.AccessToken, req.From, req.To, req.CC, req.BCC, req.Subject, req.Body, req.Slug, attachments)
-	default: // "dwd" — comportamiento previo (Domain-Wide Delegation).
-		sendErr = sendMail(ctx, req.From, req.To, req.CC, req.BCC, req.Subject, req.Body, req.Slug, attachments)
+	default: // "dwd" — Domain-Wide Delegation (legado; la app ya usa OAuth per-usuario).
+		// DEFENSA EN PROFUNDIDAD: la llave SA con DWD puede técnicamente impersonar a cualquiera del
+		// dominio. Forzamos el remitente al ÚNICO usuario configurado (KLIP_MAIL_USER) e ignoramos un
+		// `from` distinto, para que este endpoint no pueda usarse para suplantar a otros usuarios.
+		allowed := mailUserDefault()
+		if allowed == "" {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "método dwd deshabilitado: KLIP_MAIL_USER no configurado"})
+			return
+		}
+		if !strings.EqualFold(strings.TrimSpace(req.From), allowed) {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "método dwd: solo se permite enviar como el usuario configurado; usa 'oauth' (Google Workspace) para tu cuenta"})
+			return
+		}
+		sendErr = sendMail(ctx, allowed, req.To, req.CC, req.BCC, req.Subject, req.Body, req.Slug, attachments)
 	}
 	if sendErr != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": sendErr.Error()})

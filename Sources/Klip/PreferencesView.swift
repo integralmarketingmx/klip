@@ -125,14 +125,6 @@ struct PreferencesView: View {
         }
 
         switch settings.mailMethod {
-        case .dwd:
-            TextField("Servidor (https://klip…)", text: $settings.uploadEndpoint)
-                .textFieldStyle(.roundedBorder)
-            SecureField("Token de API (KLIP_API_TOKEN)", text: $settings.mailApiToken)
-                .textFieldStyle(.roundedBorder)
-            Text("El correo se envía vía Gmail del Workspace (delegación). El token protege el endpoint /send.")
-                .font(.caption).foregroundStyle(.secondary)
-
         case .oauth:
             TextField("Servidor (https://klip…)", text: $settings.uploadEndpoint)
                 .textFieldStyle(.roundedBorder)

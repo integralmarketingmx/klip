@@ -80,8 +80,9 @@ struct KeyCombo: Equatable {
 
 /// Método con el que la app manda los correos. El default reproduce el comportamiento previo (DWD).
 enum MailMethod: String, CaseIterable, Identifiable {
-    case dwd     // Automático (DWD): el server impersona vía Domain-Wide Delegation (lo de siempre).
-    case oauth   // Iniciar sesión con Google: OAuth de escritorio por-usuario, scope gmail.send.
+    // Google Workspace: OAuth de escritorio POR USUARIO (scope gmail.send). Cada quien autoriza su
+    // propia cuenta y solo envía como sí mismo → sin llave que impersone a otros del dominio.
+    case oauth
     case smtp    // SMTP manual: host/puerto/usuario/contraseña propios.
     case systemMail // Mail del sistema: abre el compositor nativo (NSSharingService) con la imagen.
 
@@ -89,8 +90,7 @@ enum MailMethod: String, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .dwd:        return "Automático (DWD)"
-        case .oauth:      return "Iniciar sesión con Google"
+        case .oauth:      return "Google Workspace"
         case .smtp:       return "SMTP"
         case .systemMail: return "Mail del sistema"
         }
@@ -245,7 +245,7 @@ final class Settings: ObservableObject {
             K.uploadEndpoint: "https://klip.integralmarketing.agency",
             K.mailApiToken: "",
             K.mailFrom: "miguel.ibarra@integralmarketing.agency",
-            K.mailMethod: MailMethod.dwd.rawValue,
+            K.mailMethod: MailMethod.oauth.rawValue,
             K.smtpHost: "",
             K.smtpPort: 587,
             K.smtpUser: "",
@@ -280,7 +280,9 @@ final class Settings: ObservableObject {
         uploadEndpoint = d.string(forKey: K.uploadEndpoint) ?? "https://klip.integralmarketing.agency"
         mailApiToken = d.string(forKey: K.mailApiToken) ?? ""
         mailFrom = d.string(forKey: K.mailFrom) ?? "miguel.ibarra@integralmarketing.agency"
-        mailMethod = MailMethod(rawValue: d.string(forKey: K.mailMethod) ?? "dwd") ?? .dwd
+        // Migración: el método DWD se retiró (impersonaba a cualquiera del dominio). Quien lo tuviera
+        // guardado pasa a Google Workspace (OAuth per-usuario), que solo envía como uno mismo.
+        mailMethod = MailMethod(rawValue: d.string(forKey: K.mailMethod) ?? "oauth") ?? .oauth
         smtpHost = d.string(forKey: K.smtpHost) ?? ""
         smtpPort = d.object(forKey: K.smtpPort) as? Int ?? 587
         smtpUser = d.string(forKey: K.smtpUser) ?? ""

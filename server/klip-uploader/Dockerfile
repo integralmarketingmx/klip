@@ -1,9 +1,11 @@
-# Build estático multi-stage (sin dependencias externas).
-FROM golang:1.22-alpine AS build
+# Build estático multi-stage. Usa vendor/ para no requerir red en el build.
+FROM golang:1.25-alpine AS build
 WORKDIR /src
-COPY go.mod .
-COPY main.go .
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /klip-uploader .
+# Dependencias vendoreadas + fuentes + assets embebidos (page.html, logo.png).
+COPY go.mod go.sum ./
+COPY vendor ./vendor
+COPY *.go page.html logo.png ./
+RUN CGO_ENABLED=0 go build -mod=vendor -ldflags="-s -w" -o /klip-uploader .
 
 FROM alpine:3.20
 RUN adduser -D -u 10001 klip && mkdir -p /var/klip/uploads && chown klip /var/klip/uploads

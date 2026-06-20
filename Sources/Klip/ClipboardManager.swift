@@ -147,7 +147,9 @@ final class ClipboardManager: ObservableObject {
 
     private func addImage(_ image: NSImage, source: CaptureSource, remote: Bool) {
         let fileName = "\(UUID().uuidString).png"
-        storage.saveImage(image, fileName: fileName)
+        // Si el guardado en disco falla, NO insertamos el item: evitaría una referencia huérfana a
+        // un archivo inexistente (preferimos perder esta captura antes que corromper el historial).
+        guard storage.saveImage(image, fileName: fileName) != nil else { return }
         let size = image.pixelDimensions
         let preview = "Imagen · \(Int(size.width))×\(Int(size.height))"
         items.insert(ClipboardItem(kind: .image, imageFileName: fileName, preview: preview,
@@ -160,9 +162,17 @@ final class ClipboardManager: ObservableObject {
     /// en el portapapeles. Análogo público a `addImage`, pero para imágenes generadas por la app
     /// (no capturadas del pasteboard). Queda disponible para OCR y búsqueda como cualquier imagen.
     @discardableResult
-    func addAnnotatedScreenshot(_ image: NSImage, copyToClipboard: Bool = true) -> UUID {
+    func addAnnotatedScreenshot(_ image: NSImage, copyToClipboard: Bool = true) -> UUID? {
         let fileName = "\(UUID().uuidString).png"
-        storage.saveImage(image, fileName: fileName)
+        // Si el guardado falla, no insertamos el item (evita referencia huérfana). Aún así dejamos la
+        // imagen en el portapapeles si se pidió, para que el usuario al menos pueda pegarla.
+        guard storage.saveImage(image, fileName: fileName) != nil else {
+            if copyToClipboard {
+                let pb = NSPasteboard.general
+                pb.clearContents(); pb.writeObjects([image])
+            }
+            return nil
+        }
         let size = image.size
         let preview = "Captura · \(Int(size.width))×\(Int(size.height))"
         let item = ClipboardItem(kind: .image, imageFileName: fileName, preview: preview)
@@ -364,7 +374,8 @@ final class ClipboardManager: ObservableObject {
 
     func addCapturedImage(_ image: NSImage, name: String? = nil) {
         let fileName = "\(UUID().uuidString).png"
-        storage.saveImage(image, fileName: fileName)
+        // Si el guardado falla, no insertamos el item (evita referencia huérfana en el historial).
+        guard storage.saveImage(image, fileName: fileName) != nil else { return }
         let size = image.pixelDimensions
         let preview = "Captura · \(Int(size.width))×\(Int(size.height))"
         items.insert(ClipboardItem(kind: .image, imageFileName: fileName, preview: preview, name: name), at: 0)

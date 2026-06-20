@@ -22,7 +22,16 @@ enum MailError: Error, LocalizedError {
     }
 }
 
-/// Datos del correo a enviar; el server arma el MIME y lo manda vía Gmail DWD.
+/// Config SMTP que viaja al backend cuando el método es .smtp (la pass va por HTTPS).
+struct SMTPConfig {
+    var host: String
+    var port: Int
+    var user: String
+    var pass: String
+    var from: String
+}
+
+/// Datos del correo a enviar; el server arma el MIME y lo manda según `method`.
 struct MailDraft {
     var from: String
     var to: [String]
@@ -33,6 +42,12 @@ struct MailDraft {
     var slug: String                 // slug Klip para correlación (puede ir vacío)
     var attachment: Data?            // PNG opcional a adjuntar directamente
     var attachmentName: String = "captura.png"
+    /// Método de transporte para el backend: "dwd" (default), "smtp" u "oauth".
+    var method: String = "dwd"
+    /// Config SMTP (solo si method == "smtp").
+    var smtp: SMTPConfig?
+    /// Access token del usuario (solo si method == "oauth").
+    var accessToken: String?
 }
 
 /// Cliente del endpoint POST /send del server Klip. Manda multipart si hay adjunto,
@@ -78,6 +93,15 @@ final class MailClient {
             field("subject", draft.subject)
             field("body", draft.body)
             field("slug", draft.slug)
+            field("method", draft.method)
+            if draft.method == "oauth", let at = draft.accessToken { field("accessToken", at) }
+            if draft.method == "smtp", let s = draft.smtp {
+                field("smtpHost", s.host)
+                field("smtpPort", String(s.port))
+                field("smtpUser", s.user)
+                field("smtpPass", s.pass)
+                field("smtpFrom", s.from)
+            }
             append("--\(boundary)\r\n")
             append("Content-Disposition: form-data; name=\"file\"; filename=\"\(draft.attachmentName)\"\r\n")
             append("Content-Type: image/png\r\n\r\n")
@@ -88,10 +112,17 @@ final class MailClient {
         } else {
             // JSON.
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            let payload: [String: Any] = [
+            var payload: [String: Any] = [
                 "from": draft.from, "to": draft.to, "cc": draft.cc, "bcc": draft.bcc,
                 "subject": draft.subject, "body": draft.body, "slug": draft.slug,
+                "method": draft.method,
             ]
+            if draft.method == "oauth", let at = draft.accessToken { payload["accessToken"] = at }
+            if draft.method == "smtp", let s = draft.smtp {
+                payload["smtp"] = [
+                    "host": s.host, "port": s.port, "user": s.user, "pass": s.pass, "from": s.from,
+                ]
+            }
             req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
         }
 

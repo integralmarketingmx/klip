@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Klip · visor del link</title>
+<style>
+  :root{ --bg:#f4f5f7; --card:#fff; --ink:#1d2230; --sub:#6b7280; --line:#e6e8ec;
+         --brand:#5b6cff; --brand2:#7a5cf0; --amber:#b7791f; --amberbg:#fdf6e7; --ok:#16a34a; }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#15171d; --card:#1d2129; --ink:#e9eaee; --sub:#9aa0ab; --line:#2a2f3a; --amberbg:#2a2310; }
+  }
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);
+    font:14px/1.5 -apple-system,system-ui,"Segoe UI",sans-serif;}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 18px;}
+  /* header */
+  header{position:sticky;top:0;background:color-mix(in srgb,var(--bg) 88%,transparent);
+    backdrop-filter:blur(8px);border-bottom:1px solid var(--line);z-index:5;}
+  .hbar{display:flex;align-items:center;gap:12px;height:56px;}
+  .logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:16px;}
+  .logo .mark{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--brand),var(--brand2));
+    display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;}
+  .spacer{flex:1}
+  .expire{display:inline-flex;align-items:center;gap:6px;background:var(--amberbg);color:var(--amber);
+    font-weight:600;font-size:12px;padding:5px 10px;border-radius:999px;}
+  .lang{color:var(--sub);font-size:12px;}
+  .ghost{border:1px solid var(--line);background:transparent;color:var(--ink);font-weight:600;
+    font-size:12.5px;padding:7px 12px;border-radius:9px;cursor:pointer;}
+  /* hero */
+  .hero{margin:22px 0 14px;display:flex;justify-content:center;}
+  .shot{max-width:100%;border-radius:12px;box-shadow:0 14px 40px rgba(20,25,40,.18);
+    background:repeating-conic-gradient(#e9ebef 0% 25%,#f4f5f7 0% 50%) 50%/22px 22px;
+    width:900px;height:470px;position:relative;overflow:hidden;}
+  .shot .demo{position:absolute;inset:0;background:linear-gradient(120deg,#5b6cff22,#7a5cf022),
+    linear-gradient(160deg,#2b3350,#0f1424);display:flex;align-items:center;justify-content:center;
+    color:#cfd6ff;font-size:13px;letter-spacing:.4px;}
+  /* action bar */
+  .actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:6px 0 10px;}
+  .btn{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);background:var(--card);
+    color:var(--ink);font-weight:600;font-size:13px;padding:9px 14px;border-radius:10px;cursor:pointer;}
+  .btn:hover{border-color:var(--brand)}
+  .btn.primary{background:var(--ink);color:var(--bg);border-color:var(--ink);}
+  .btn.brand{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;border:none;}
+  .btn .k{font-size:14px}
+  /* meta strip */
+  .meta{display:flex;justify-content:center;gap:10px;color:var(--sub);font-size:12.5px;margin:4px 0 18px;
+    flex-wrap:wrap;}
+  .meta b{color:var(--ink);font-weight:600}
+  .dot{opacity:.5}
+  /* OCR block */
+  .ocr{max-width:900px;margin:0 auto 22px;border:1px solid var(--line);border-radius:12px;background:var(--card);overflow:hidden;}
+  .ocr summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:9px;padding:13px 16px;font-weight:600;}
+  .ocr summary::-webkit-details-marker{display:none}
+  .ocr .chev{margin-left:auto;color:var(--sub)}
+  .ocr .body{border-top:1px solid var(--line);padding:14px 16px;}
+  .ocr pre{margin:0 0 10px;white-space:pre-wrap;font:12.5px/1.6 ui-monospace,Menlo,monospace;
+    background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px;color:var(--ink);max-height:160px;overflow:auto;}
+  .copytxt{font-size:12.5px;}
+  /* footer */
+  footer{border-top:1px solid var(--line);color:var(--sub);font-size:12.5px;}
+  .fbar{display:flex;align-items:center;gap:16px;height:52px;flex-wrap:wrap;}
+  footer a{color:var(--sub);text-decoration:none}
+  /* states gallery */
+  .states{background:var(--card);border-top:1px solid var(--line);margin-top:26px;padding:24px 0;}
+  .sgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  @media(max-width:760px){.sgrid{grid-template-columns:1fr}}
+  .scard{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--bg);}
+  .scard h4{margin:0;padding:10px 14px;font-size:13px;border-bottom:1px solid var(--line);background:var(--card);}
+  .scard .sbody{padding:14px;min-height:150px;position:relative;}
+  /* annotator */
+  .anntool{display:flex;gap:6px;margin-bottom:10px;}
+  .anntool span{width:30px;height:30px;border-radius:7px;border:1px solid var(--line);background:var(--card);
+    display:flex;align-items:center;justify-content:center;font-size:13px;}
+  .anntool .on{background:var(--brand);color:#fff;border-color:var(--brand)}
+  .anncanvas{height:120px;border-radius:8px;background:linear-gradient(160deg,#2b3350,#0f1424);position:relative;}
+  .anncanvas .arw{position:absolute;left:30px;top:40px;color:#ff5b6c;font-size:22px;transform:rotate(20deg)}
+  .anncanvas .bx{position:absolute;right:40px;top:30px;width:90px;height:50px;border:3px solid #ffd23f;border-radius:4px}
+  /* send back */
+  .field{margin-bottom:9px}
+  .field label{display:block;font-size:11.5px;color:var(--sub);margin-bottom:3px}
+  .field input,.field textarea{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;
+    background:var(--card);color:var(--ink);font:13px sans-serif}
+  .pill{display:inline-block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;
+    padding:2px 7px;border-radius:5px;margin-left:6px;vertical-align:middle}
+  .pill.a{background:#16a34a22;color:#16a34a} .pill.b{background:#b7791f22;color:#b7791f}
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);
+    padding:9px 14px;border-radius:10px;font-size:12.5px;display:flex;gap:8px;align-items:center;box-shadow:0 8px 24px rgba(0,0,0,.3)}
+  h2.sec{max-width:1120px;margin:0 auto;padding:0 18px;font-size:13px;color:var(--sub);text-transform:uppercase;letter-spacing:.6px}
+</style>
+</head>
+<body>
+
+<!-- ===== VISOR PRINCIPAL ===== -->
+<header><div class="wrap hbar">
+  <div class="logo"><span class="mark">✂</span> Klip</div>
+  <span class="expire">⏱ Se borra en 2d 4h</span>
+  <span class="spacer"></span>
+  <span class="lang">ES · EN</span>
+  <button class="ghost">⬇ Descargar Klip para Mac</button>
+</div></header>
+
+<div class="wrap">
+  <div class="hero">
+    <div class="shot"><div class="demo">— captura compartida —</div></div>
+  </div>
+
+  <div class="actions">
+    <button class="btn primary"><span class="k">🔗</span> Copiar link</button>
+    <button class="btn"><span class="k">⬇</span> Descargar</button>
+    <button class="btn"><span class="k">⧉</span> Copiar imagen</button>
+    <button class="btn brand"><span class="k">✏️</span> Anotar y mandar de vuelta</button>
+    <button class="btn">···</button>
+  </div>
+
+  <div class="meta">
+    <span><b>PNG</b></span><span class="dot">·</span>
+    <span><b>1920×1080</b></span><span class="dot">·</span>
+    <span><b>240 KB</b></span><span class="dot">·</span>
+    <span>subido hace <b>3h</b></span><span class="dot">·</span>
+    <span>se borra en <b>2d 4h</b></span>
+  </div>
+
+  <!-- OCR: texto detectado para copiar (pedido del usuario) -->
+  <details class="ocr" open>
+    <summary>🔤 Texto detectado (OCR) <span class="chev">⌃</span></summary>
+    <div class="body">
+      <pre>Error: connection refused at db.connect(host="10.0.0.4", port=5432)
+Reintentos: 3/3 — revisar credenciales en .env</pre>
+      <button class="btn copytxt"><span class="k">⧉</span> Copiar texto</button>
+    </div>
+  </details>
+</div>
+
+<footer><div class="wrap fbar">
+  <span>Hecho con <b style="color:var(--ink)">Klip</b></span>
+  <a href="#">Descargar para Mac</a>
+  <a href="#">Privacidad</a>
+  <span class="spacer" style="flex:1"></span>
+  <span>Se autoelimina en 3 días</span>
+</div></footer>
+
+<!-- ===== OTROS ESTADOS ===== -->
+<h2 class="sec" style="margin-top:26px">Otros estados de la página</h2>
+<div class="states"><div class="wrap"><div class="sgrid">
+
+  <!-- anotador web -->
+  <div class="scard">
+    <h4>✏️ Modo anotador (en el navegador, sin instalar nada) <span class="pill a">Sprint 2</span></h4>
+    <div class="sbody">
+      <div class="anntool">
+        <span class="on">➤</span><span>▭</span><span>◯</span><span>⎯</span><span>T</span><span>🖍</span><span>①</span><span>🌫</span>
+      </div>
+      <div class="anncanvas"><div class="arw">➤</div><div class="bx"></div></div>
+      <div class="actions" style="justify-content:flex-start;margin-top:10px">
+        <button class="btn">⬇ Descargar anotada</button>
+        <button class="btn">⧉ Copiar</button>
+        <button class="btn brand">↩ Mandar de vuelta</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- mandar de vuelta -->
+  <div class="scard">
+    <h4>↩ Mandar de vuelta / por email <span class="pill b">Sprint 3 · con Martin</span></h4>
+    <div class="sbody">
+      <div class="field"><label>Tu nombre</label><input value="Diseñador QA"></div>
+      <div class="field"><label>Tu email (para responderte)</label><input value="qa@empresa.com"></div>
+      <div class="field"><label>Comentario</label><textarea rows="2">El botón se encima en mobile, marqué dónde 👆</textarea></div>
+      <div class="actions" style="justify-content:flex-start">
+        <button class="btn brand">✉ Enviar al dueño</button>
+        <span style="font-size:11.5px;color:var(--sub);align-self:center">Adjunta la imagen anotada + tu navegador/SO</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- preview OG -->
+  <div class="scard">
+    <h4>🔗 Preview al pegar en Slack/WhatsApp (OG card) <span class="pill a">Sprint 1</span></h4>
+    <div class="sbody">
+      <div style="border:1px solid var(--line);border-radius:10px;overflow:hidden;max-width:340px">
+        <div style="height:120px;background:linear-gradient(120deg,#2b3350,#0f1424)"></div>
+        <div style="padding:10px 12px;background:var(--card)">
+          <div style="font-weight:700">Captura · 1920×1080 — Klip</div>
+          <div style="font-size:12px;color:var(--sub)">klip.integralmarketing.agency</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- expirado -->
+  <div class="scard">
+    <h4>🗑 Expirado / 404 <span class="pill a">Sprint 1</span></h4>
+    <div class="sbody" style="display:flex;align-items:center;justify-content:center;text-align:center;color:var(--sub)">
+      <div><div style="font-size:34px;margin-bottom:8px">🌫</div>
+        Esta captura ya se borró.<br><span style="font-size:12px">Los links de Klip se autoeliminan a los 3 días.</span><br>
+        <button class="btn brand" style="margin-top:12px">Crear la tuya con Klip</button></div>
+    </div>
+  </div>
+
+</div></div></div>
+
+<div class="toast">✓ Link copiado · <span style="opacity:.8;font-family:ui-monospace">klip.integralmarketing.agency/LCXeEE</span></div>
+
+</body>
+</html>

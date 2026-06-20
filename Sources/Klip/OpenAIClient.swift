@@ -44,7 +44,7 @@ final class OpenAIClient {
 
         let boundary = "Boundary-\(UUID().uuidString)"
         var body = Data()
-        func append(_ s: String) { body.append(s.data(using: .utf8)!) }
+        func append(_ s: String) { if let d = s.data(using: .utf8) { body.append(d) } }
         func field(_ name: String, _ value: String) {
             append("--\(boundary)\r\n")
             append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")

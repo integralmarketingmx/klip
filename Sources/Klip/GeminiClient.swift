@@ -45,7 +45,11 @@ final class GeminiClient {
         ]
         let body = try JSONSerialization.data(withJSONObject: payload)
 
-        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent")!
+        // La URL incluye el nombre del modelo (interpolado): si el usuario configura un valor
+        // con caracteres inválidos, URL(string:) puede devolver nil → lanzamos en vez de crashear.
+        guard let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent") else {
+            throw OpenAIError.invalidResponse
+        }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue(key, forHTTPHeaderField: "x-goog-api-key")

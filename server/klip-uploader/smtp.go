@@ -55,6 +55,9 @@ func sendViaSMTP(ctx context.Context, cfg smtpConfig, from string, to, cc, bcc [
 	if err := cfg.valid(); err != nil {
 		return err
 	}
+	if err := assertPublicSMTPHost(cfg.Host); err != nil {
+		return err
+	}
 	envelopeFrom := strings.TrimSpace(cfg.From)
 	if envelopeFrom == "" {
 		envelopeFrom = from
@@ -130,4 +133,33 @@ func sendViaSMTP(ctx context.Context, cfg smtpConfig, from string, to, cc, bcc [
 		return fmt.Errorf("smtp: cierre del mensaje falló: %w", err)
 	}
 	return client.Quit()
+}
+
+// assertPublicSMTPHost rechaza hosts SMTP que resuelven a direcciones NO enrutables públicamente
+// (loopback, privadas, link-local, unspecified). Es defensa en profundidad: el método "smtp" deja
+// al usuario (autenticado por token) elegir host/puerto; sin esto, un token comprometido podría
+// usar el backend para sondear o alcanzar servicios internos de la red (SSRF). Nota: hay una
+// ventana TOCTOU entre esta resolución y el Dial; aceptable para este nivel de mitigación.
+func assertPublicSMTPHost(host string) error {
+	h := strings.TrimSpace(host)
+	if h == "" {
+		return fmt.Errorf("smtp: host vacío")
+	}
+	var ips []net.IP
+	if ip := net.ParseIP(h); ip != nil {
+		ips = []net.IP{ip}
+	} else {
+		resolved, err := net.LookupIP(h)
+		if err != nil {
+			return fmt.Errorf("smtp: no se pudo resolver el host %q: %w", h, err)
+		}
+		ips = resolved
+	}
+	for _, ip := range ips {
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified() ||
+			ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+			return fmt.Errorf("smtp: el host %q apunta a una dirección no pública (%s); no permitido", h, ip)
+		}
+	}
+	return nil
 }

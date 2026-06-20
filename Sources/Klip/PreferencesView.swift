@@ -329,7 +329,12 @@ struct PreferencesView: View {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(costCheckPrompt, forType: .string)
                         costPromptCopied = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { costPromptCopied = false }
+                        // Aislamiento @MainActor explícito (en vez de un closure de DispatchQueue
+                        // sin isolación) para resetear el estado tras 2s.
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .seconds(2))
+                            costPromptCopied = false
+                        }
                     } label: {
                         Label(costPromptCopied ? "Prompt copiado ✓" : "Copiar prompt para verificar precios",
                               systemImage: costPromptCopied ? "checkmark" : "doc.on.doc")

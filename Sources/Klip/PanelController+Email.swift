@@ -39,11 +39,10 @@ extension PanelController {
             attachment: attachment,
             initialSubject: subject,
             initialBody: body,
-            onClose: { [weak self] in
-                self?.emailWindow?.orderOut(nil)
-                self?.emailWindow = nil
-                self?.modalCount -= 1
-            }
+            // onClose desde la vista (botones cancelar/enviar) → cierra la ventana. La limpieza
+            // (modalCount, referencias) la hace SIEMPRE windowWillClose, sea cual sea la vía de
+            // cierre (botón de la vista, X roja, ⌘W). Así modalCount no queda colgado.
+            onClose: { [weak self] in self?.emailWindow?.close() }
         )
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 560),
                          styleMask: [.titled, .closable], backing: .buffered, defer: false)
@@ -51,9 +50,30 @@ extension PanelController {
         w.isReleasedWhenClosed = false
         w.contentView = NSHostingView(rootView: view)
         w.center()
+        // Delegate que centraliza el cierre: decrementa modalCount exactamente una vez.
+        let closer = WindowCloser { [weak self] in
+            self?.emailWindow = nil
+            self?.emailCloser = nil
+            self?.modalCount = max(0, (self?.modalCount ?? 1) - 1)
+        }
+        w.delegate = closer
+        emailCloser = closer
         emailWindow = w
         modalCount += 1                     // no auto-cerrar el panel mientras el compositor está abierto
         NSApp.activate(ignoringOtherApps: true)
         w.makeKeyAndOrderFront(nil)
+    }
+}
+
+/// Delegate mínimo que ejecuta un bloque de limpieza UNA sola vez al cerrarse la ventana,
+/// sin importar la vía (botón de la vista, X roja, ⌘W). Evita fugas de estado modal.
+final class WindowCloser: NSObject, NSWindowDelegate {
+    private let onClose: () -> Void
+    private var fired = false
+    init(onClose: @escaping () -> Void) { self.onClose = onClose }
+    func windowWillClose(_ notification: Notification) {
+        guard !fired else { return }
+        fired = true
+        onClose()
     }
 }

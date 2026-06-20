@@ -66,7 +66,9 @@ final class GoogleOAuthClient {
         let listener = try LoopbackServer()
         let redirectURI = "http://127.0.0.1:\(listener.port)/"
 
-        var comps = URLComponents(string: authBase)!
+        guard var comps = URLComponents(string: authBase) else {
+            throw GoogleOAuthError.denied("URL de autorización inválida")
+        }
         comps.queryItems = [
             .init(name: "client_id", value: clientId),
             .init(name: "redirect_uri", value: redirectURI),
@@ -118,7 +120,8 @@ final class GoogleOAuthClient {
         let clientSecret = Settings.shared.googleClientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clientId.isEmpty, !clientSecret.isEmpty else { throw GoogleOAuthError.missingClient }
 
-        var req = URLRequest(url: URL(string: tokenURL)!)
+        guard let tURL = URL(string: tokenURL) else { throw GoogleOAuthError.token("URL de token inválida") }
+        var req = URLRequest(url: tURL)
         req.httpMethod = "POST"
         req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         req.httpBody = Self.formBody([
@@ -152,7 +155,8 @@ final class GoogleOAuthClient {
     private func exchangeCode(_ code: String, verifier: String,
                               clientId: String, clientSecret: String,
                               redirectURI: String) async throws -> Tokens {
-        var req = URLRequest(url: URL(string: tokenURL)!)
+        guard let tURL = URL(string: tokenURL) else { throw GoogleOAuthError.token("URL de token inválida") }
+        var req = URLRequest(url: tURL)
         req.httpMethod = "POST"
         req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         req.httpBody = Self.formBody([
@@ -173,7 +177,8 @@ final class GoogleOAuthClient {
 
     private func fetchEmail(accessToken: String?) async throws -> String {
         guard let at = accessToken else { return "" }
-        var req = URLRequest(url: URL(string: "https://www.googleapis.com/oauth2/v3/userinfo")!)
+        guard let infoURL = URL(string: "https://www.googleapis.com/oauth2/v3/userinfo") else { return "" }
+        var req = URLRequest(url: infoURL)
         req.setValue("Bearer \(at)", forHTTPHeaderField: "Authorization")
         let (data, _) = try await dataTask(req)
         struct Info: Decodable { let email: String? }

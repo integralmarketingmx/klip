@@ -83,7 +83,7 @@ func appendReply(r mxReply) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(repliesPath(slug), b, 0o644)
+	return atomicWriteFile(repliesPath(slug), b, 0o644)
 }
 
 // mergeReplies fusiona las respuestas leídas por Gmail (DWD) con las recibidas

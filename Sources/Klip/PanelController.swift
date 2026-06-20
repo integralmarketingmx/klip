@@ -43,6 +43,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     var uploadToastWindow: NSWindow?          // internal: usado por PanelController+Upload.swift
     /// Ventana del compositor de email; usada por PanelController+Email.swift.
     var emailWindow: NSWindow?
+    var emailCloser: NSObject?                // retiene el delegate de cierre (NSWindow.delegate es weak)
 
     init(manager: ClipboardManager, statusItem: NSStatusItem?) {
         self.manager = manager

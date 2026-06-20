@@ -16,6 +16,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/mail"
 	"os"
 	"strconv"
 	"strings"
@@ -131,7 +132,11 @@ func handleSend(w http.ResponseWriter, r *http.Request) {
 		// Adjunto subido directamente (campo "file").
 		if f, hdr, err := r.FormFile("file"); err == nil {
 			defer f.Close()
-			b, _ := io.ReadAll(f)
+			b, err := io.ReadAll(f)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no se pudo leer el adjunto: " + err.Error()})
+				return
+			}
 			if len(b) > 0 {
 				attachments = append(attachments, adjunto{
 					name:  hdr.Filename,
@@ -157,6 +162,30 @@ func handleSend(w http.ResponseWriter, r *http.Request) {
 	if len(req.To) == 0 && len(req.CC) == 0 && len(req.BCC) == 0 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "se requiere al menos un destinatario (to/cc/bcc)"})
 		return
+	}
+
+	// Valida y normaliza direcciones con net/mail: rechaza formato inválido y, sobre todo,
+	// CRLF embebido → previene inyección de cabeceras (Bcc/headers arbitrarios) en buildMIME.
+	if a, err := mail.ParseAddress(req.From); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "remitente (from) inválido"})
+		return
+	} else {
+		req.From = a.Address
+	}
+	for _, list := range []*[]string{&req.To, &req.CC, &req.BCC} {
+		clean := make([]string, 0, len(*list))
+		for _, raw := range *list {
+			if strings.TrimSpace(raw) == "" {
+				continue
+			}
+			a, err := mail.ParseAddress(raw)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "destinatario inválido: " + raw})
+				return
+			}
+			clean = append(clean, a.Address)
+		}
+		*list = clean
 	}
 
 	// Adjunto por referencia a un slug ya subido (<slug>.png en uploadDir).

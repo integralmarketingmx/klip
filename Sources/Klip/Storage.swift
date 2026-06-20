@@ -259,10 +259,20 @@ final class Storage: PersistentStoring {
         }
 
         // Restaura un destino desde su respaldo (solo si el respaldo existe → original a salvo).
+        // Robustez: si el move falla, intenta copiar (no perder el original); si todo falla, NO
+        // silencia: deja el respaldo en su sitio y lo registra para recuperación manual.
         func restore(_ live: URL, _ bak: URL) {
             guard fm.fileExists(atPath: bak.path) else { return }   // sin bak: el live es el original intacto
             try? fm.removeItem(at: live)
-            try? fm.moveItem(at: bak, to: live)
+            do {
+                try fm.moveItem(at: bak, to: live)
+            } catch {
+                if (try? fm.copyItem(at: bak, to: live)) != nil {
+                    try? fm.removeItem(at: bak)
+                } else {
+                    NSLog("Klip importBackup: no se pudo restaurar \(live.lastPathComponent); respaldo conservado en \(bak.lastPathComponent)")
+                }
+            }
         }
 
         do {

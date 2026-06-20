@@ -107,11 +107,38 @@ enum SecretStore {
                                       outputByteCount: 32)
     }
 
-    /// Semilla estable de esta máquina: IOPlatformUUID (no cambia entre recompilaciones). Si no se
-    /// puede leer, cae a un secreto aleatorio persistido una sola vez (0600) en el directorio de la app.
+    /// Semilla estable de esta máquina. Fuente preferida: IOPlatformUUID. Respaldo: secreto
+    /// aleatorio persistido. CLAVE: la fuente se FIJA en el primer uso (marcador `.machine.src`)
+    /// y nunca cambia, para no romper el descifrado de secretos ya guardados si el UUID aparece/
+    /// desaparece entre ejecuciones. Migración-segura: instalaciones previas sin marcador que ya
+    /// usaban la semilla persistida (existe `.machine.seed`) la conservan; las demás usan el UUID.
     private static func machineSeed() -> String {
-        if let uuid = platformUUID(), !uuid.isEmpty { return uuid }
-        return persistedSeed()
+        let markerURL = Storage.shared.baseURL.appendingPathComponent(".machine.src")
+        let seedURL = Storage.shared.baseURL.appendingPathComponent(".machine.seed")
+        let uuid = platformUUID().flatMap { $0.isEmpty ? nil : $0 }
+        let recorded = try? String(contentsOf: markerURL, encoding: .utf8)
+
+        func record(_ src: String) {
+            try? src.write(to: markerURL, atomically: true, encoding: .utf8)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: markerURL.path)
+        }
+
+        switch recorded {
+        case "seed":
+            return persistedSeed()                       // fuente ya fijada al respaldo
+        case "uuid":
+            // No generamos una semilla nueva si el UUID desaparece: eso cambiaría la llave.
+            // Si falta, devolvemos sentinela estable → el descifrado falla limpio y el usuario
+            // re-ingresa; al volver el UUID, todo vuelve a descifrar.
+            return uuid ?? ""
+        default:
+            // Primer uso (o instalación previa sin marcador).
+            if FileManager.default.fileExists(atPath: seedURL.path) {
+                record("seed"); return persistedSeed()   // ya venía usando el respaldo: conservarlo
+            }
+            if let uuid { record("uuid"); return uuid }
+            record("seed"); return persistedSeed()
+        }
     }
 
     private static func platformUUID() -> String? {

@@ -58,7 +58,13 @@ enum MarkdownExporter {
                     out += Markdownify.fromText(item.text ?? "") + "\n\n"
                 }
             case .image:
-                out += "![imagen](images/\(item.imageFileName ?? "imagen.png"))\n\n"
+                // Solo enlaza la imagen si el archivo sigue en disco; si no, evita un link roto.
+                if let fn = item.imageFileName,
+                   FileManager.default.fileExists(atPath: Storage.shared.imageURL(for: fn).path) {
+                    out += "![imagen](images/\(fn))\n\n"
+                } else {
+                    out += "_(imagen no disponible)_\n\n"
+                }
             }
         }
         return out

@@ -136,7 +136,9 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	// La respuesta al cliente NO cambia: {"url": "…/slug.<ext>"}. Lo sidecar/preview es best-effort.
 	url := strings.TrimRight(baseURL, "/") + "/" + name
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]string{"url": url})
+	if err := json.NewEncoder(w).Encode(map[string]string{"url": url}); err != nil {
+		log.Printf("aviso: no se pudo escribir la respuesta JSON de /upload (%s): %v", name, err)
+	}
 	log.Printf("subido %s (%d bytes) -> %s", name, written, url)
 
 	// Rama nota de voz: sidecar con transcripción/duración, sin preview OG de imagen.
@@ -171,13 +173,41 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// writeMeta serializa el sidecar <slug>.json.
+// writeMeta serializa el sidecar <slug>.json de forma atómica.
 func writeMeta(slug string, m meta) error {
 	b, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(uploadDir, slug+".json"), b, 0o644)
+	return atomicWriteFile(filepath.Join(uploadDir, slug+".json"), b, 0o644)
+}
+
+// atomicWriteFile escribe a un temporal en el mismo directorio, lo sincroniza a disco
+// y lo renombra sobre el destino. El rename es atómico en el mismo filesystem: ante un
+// crash/corte de luz el archivo queda íntegro (versión vieja o nueva, nunca a medias).
+func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".tmp-"+filepath.Base(path)+"-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // no-op si el rename tuvo éxito
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpName, perm); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
 
 // readMeta lee el sidecar <slug>.json si existe.

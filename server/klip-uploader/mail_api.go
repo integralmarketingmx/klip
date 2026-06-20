@@ -16,6 +16,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -63,6 +64,12 @@ type sendRequest struct {
 	Slug    string   `json:"slug"`
 	// AttachSlug: si se pasa, el server adjunta el PNG ya subido <slug>.png del uploadDir.
 	AttachSlug string `json:"attachSlug"`
+	// Method selecciona el transporte: "" o "dwd" (default), "smtp" o "oauth".
+	Method string `json:"method"`
+	// SMTP: config del método "smtp" (host/port/user/pass/from). Solo se usa si method=="smtp".
+	SMTP *smtpConfig `json:"smtp"`
+	// AccessToken: token del usuario para el método "oauth". Solo se usa si method=="oauth".
+	AccessToken string `json:"accessToken"`
 }
 
 // handleSend implementa POST /send. Acepta multipart/form-data o application/json.
@@ -104,6 +111,22 @@ func handleSend(w http.ResponseWriter, r *http.Request) {
 		req.Body = r.FormValue("body")
 		req.Slug = r.FormValue("slug")
 		req.AttachSlug = r.FormValue("attachSlug")
+		req.Method = r.FormValue("method")
+		req.AccessToken = r.FormValue("accessToken")
+		// Config SMTP por campos de formulario (cuando method=="smtp" y se manda multipart).
+		if strings.EqualFold(r.FormValue("method"), "smtp") {
+			port := 0
+			if v := strings.TrimSpace(r.FormValue("smtpPort")); v != "" {
+				port, _ = strconv.Atoi(v)
+			}
+			req.SMTP = &smtpConfig{
+				Host: r.FormValue("smtpHost"),
+				Port: port,
+				User: r.FormValue("smtpUser"),
+				Pass: r.FormValue("smtpPass"),
+				From: r.FormValue("smtpFrom"),
+			}
+		}
 		// Adjunto subido directamente (campo "file").
 		if f, hdr, err := r.FormFile("file"); err == nil {
 			defer f.Close()
@@ -140,23 +163,54 @@ func handleSend(w http.ResponseWriter, r *http.Request) {
 		attachments = append(attachments, att)
 	}
 
-	// KLIP_MAIL_DRY_RUN=1 valida el payload y arma el MIME sin llamar a Gmail (útil en CI).
+	method := strings.ToLower(strings.TrimSpace(req.Method))
+	if method == "" {
+		method = "dwd"
+	}
+
+	// Validación temprana del método "smtp": sin config válida, error claro (sin red).
+	if method == "smtp" {
+		if req.SMTP == nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "method=smtp requiere el bloque 'smtp' (host/port/user/pass)"})
+			return
+		}
+		if err := req.SMTP.valid(); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+	}
+	if method == "oauth" && strings.TrimSpace(req.AccessToken) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "method=oauth requiere 'accessToken'"})
+		return
+	}
+
+	// KLIP_MAIL_DRY_RUN=1 valida el payload y arma el MIME sin llamar al transporte (útil en CI).
 	if os.Getenv("KLIP_MAIL_DRY_RUN") == "1" {
 		if _, err := buildMIME(req.From, req.To, req.CC, req.BCC, req.Subject, req.Body, req.Slug, attachments); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "MIME inválido: " + err.Error()})
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "dryRun": true, "attachments": len(attachments)})
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "dryRun": true, "method": method, "attachments": len(attachments)})
 		return
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	if err := sendMail(ctx, req.From, req.To, req.CC, req.BCC, req.Subject, req.Body, req.Slug, attachments); err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+
+	var sendErr error
+	switch method {
+	case "smtp":
+		sendErr = sendViaSMTP(ctx, *req.SMTP, req.From, req.To, req.CC, req.BCC, req.Subject, req.Body, req.Slug, attachments)
+	case "oauth":
+		sendErr = sendViaOAuth(ctx, req.AccessToken, req.From, req.To, req.CC, req.BCC, req.Subject, req.Body, req.Slug, attachments)
+	default: // "dwd" — comportamiento previo (Domain-Wide Delegation).
+		sendErr = sendMail(ctx, req.From, req.To, req.CC, req.BCC, req.Subject, req.Body, req.Slug, attachments)
+	}
+	if sendErr != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": sendErr.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "slug": sanitizeSlug(req.Slug)})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "method": method, "slug": sanitizeSlug(req.Slug)})
 }
 
 // handleInbox implementa GET /inbox?user=... — devuelve las respuestas detectadas.

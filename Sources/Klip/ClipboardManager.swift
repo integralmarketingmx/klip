@@ -127,7 +127,10 @@ final class ClipboardManager: ObservableObject {
     private func addText(_ text: String, source: CaptureSource, remote: Bool) {
         if let idx = items.firstIndex(where: { $0.kind == .text && $0.isVoiceNote != true && $0.text == text }) {
             var item = items.remove(at: idx)
+            // Señal de frecuencia (C7): refresca createdAt, conserva/inicializa firstSeenAt e incrementa copyCount.
+            item.firstSeenAt = item.firstSeenAt ?? item.createdAt
             item.createdAt = Date()
+            item.copyCount += 1
             item.sourceName = source.name           // refrescar origen con la captura nueva
             item.sourceBundleID = source.bundleID
             item.isRemote = remote ? true : nil

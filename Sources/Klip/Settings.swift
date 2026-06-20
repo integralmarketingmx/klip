@@ -116,6 +116,8 @@ final class Settings: ObservableObject {
         static let mods3      = "captureHotKeyModifiers"
         static let uiLang     = "uiLanguage"
         static let uploadEndpoint = "uploadEndpoint"
+        static let mailApiToken = "mailApiToken"
+        static let mailFrom     = "mailFrom"
     }
 
     @Published var maxItems: Int          { didSet { d.set(maxItems, forKey: K.maxItems) } }
@@ -156,6 +158,10 @@ final class Settings: ObservableObject {
     /// Servidor de subida de capturas (estilo Lightshot). POST multipart a `<endpoint>/upload`,
     /// devuelve `{"url": "…"}`. Los links se auto-purgan a los 3 días (etapa de pruebas).
     @Published var uploadEndpoint: String { didSet { d.set(uploadEndpoint, forKey: K.uploadEndpoint) } }
+    /// Shared secret para los endpoints de email del server (POST /send). Va en el header `X-Klip-Token`.
+    @Published var mailApiToken: String { didSet { d.set(mailApiToken, forKey: K.mailApiToken) } }
+    /// Remitente por defecto (usuario actual a impersonar vía DWD en el server). Editable en el compositor.
+    @Published var mailFrom: String { didSet { d.set(mailFrom, forKey: K.mailFrom) } }
 
     /// Toggle simple que controla los tres filtros de privacidad a la vez.
     var ignoreSensitive: Bool {
@@ -188,7 +194,9 @@ final class Settings: ObservableObject {
             K.keyCode3: Int(kVK_ANSI_2),
             K.mods3: Int(cmdKey | shiftKey),
             K.uiLang: "es",
-            K.uploadEndpoint: "https://klip.integralmarketing.agency"
+            K.uploadEndpoint: "https://klip.integralmarketing.agency",
+            K.mailApiToken: "",
+            K.mailFrom: "miguel.ibarra@integralmarketing.agency"
         ])
         maxItems = d.integer(forKey: K.maxItems)
         combo = KeyCombo(keyCode: UInt32(d.integer(forKey: K.keyCode)),
@@ -214,6 +222,8 @@ final class Settings: ObservableObject {
                                 carbonModifiers: UInt32(d.integer(forKey: K.mods3)))
         uiLanguage = d.string(forKey: K.uiLang) ?? "es"
         uploadEndpoint = d.string(forKey: K.uploadEndpoint) ?? "https://klip.integralmarketing.agency"
+        mailApiToken = d.string(forKey: K.mailApiToken) ?? ""
+        mailFrom = d.string(forKey: K.mailFrom) ?? "miguel.ibarra@integralmarketing.agency"
     }
 
     func addExcludedApp(_ id: String) {

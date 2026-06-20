@@ -41,6 +41,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     var annotationWindow: NSWindow?           // internal: usado por PanelController+Capture.swift
     /// Confirmación breve no-modal de subida; se auto-cierra a los pocos segundos.
     var uploadToastWindow: NSWindow?          // internal: usado por PanelController+Upload.swift
+    /// Ventana del compositor de email; usada por PanelController+Email.swift.
+    var emailWindow: NSWindow?
 
     init(manager: ClipboardManager, statusItem: NSStatusItem?) {
         self.manager = manager
@@ -71,6 +73,7 @@ final class PanelController: NSObject, NSWindowDelegate {
             onPick: { [weak self] item in self?.pick(item) },
             onSaveImage: { [weak self] item in self?.saveImage(item) },
             onUploadLink: { [weak self] item in await self?.uploadAndCopyLink(item) },
+            onComposeEmail: { [weak self] item in self?.composeEmail(item) },
             onCopyMarkdown: { [weak self] item in self?.copyMarkdown(of: item) },
             onCopyAllMarkdown: { [weak self] in self?.copyAllMarkdown() },
             onOpenPreferences: { [weak self] in self?.hide(restoreFocus: false); self?.onOpenPreferences?() },

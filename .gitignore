@@ -17,3 +17,4 @@ Package.resolved
 
 # Go: binario compilado del uploader
 /server/klip-uploader/klip-uploader
+.gstack/

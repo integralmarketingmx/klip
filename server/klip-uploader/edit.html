@@ -35,8 +35,10 @@
   /* canvas stage */
   .stage{display:flex;justify-content:center;margin:6px 0 14px;}
   .canvas-host{max-width:100%;border-radius:12px;box-shadow:0 14px 40px rgba(20,25,40,.18);overflow:hidden;
-    background:repeating-conic-gradient(#e9ebef 0% 25%,#f4f5f7 0% 50%) 50%/22px 22px;}
-  .canvas-host canvas{display:block;max-width:100%;height:auto !important;}
+    background:repeating-conic-gradient(#e9ebef 0% 25%,#f4f5f7 0% 50%) 50%/22px 22px;line-height:0;}
+  /* fabric controla el tamaño en CSS (setDimensions cssOnly); no forzamos height aquí. */
+  .canvas-host .canvas-container{max-width:100%;}
+  .canvas-host canvas{display:block;}
   /* export bar */
   .exports{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:6px 0 24px;}
   .btn{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);background:var(--card);
@@ -136,28 +138,33 @@
   // pila de fondos para deshacer el blur (objetos sí salen de canvas._objects)
   var STROKE = 4;
 
+  // Resolución NATIVA de la imagen: el backstore del canvas se mantiene a este tamaño (export en
+  // calidad completa); solo el tamaño EN PANTALLA se escala de forma responsive.
+  var nativeW = 900, nativeH = 500;
+
   // Carga la imagen de fondo a tamaño nativo; el canvas toma sus dimensiones.
   fabric.Image.fromURL(IMAGE_URL, function(img){
-    var w = img.width || 900, h = img.height || 500;
-    canvas.setWidth(w); canvas.setHeight(h);
+    nativeW = img.width || 900; nativeH = img.height || 500;
+    canvas.setWidth(nativeW); canvas.setHeight(nativeH);
     canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas), {
       originX:'left', originY:'top', left:0, top:0
     });
     fitToHost();
   }, { crossOrigin: 'anonymous' });
 
-  // Escala visual del canvas para que quepa en el host (no afecta el export).
+  // Ajuste responsive: escala el tamaño EN CSS del canvas Y su contenedor con setDimensions(cssOnly),
+  // así no queda espacio vacío debajo y el mapeo del puntero sigue correcto. El backstore (resolución
+  // real para exportar) no cambia. Se adapta al ancho disponible (pantallas chicas / móvil incluidas).
   function fitToHost(){
     var host = document.querySelector('.canvas-host');
-    var maxW = Math.min(host.parentElement.clientWidth, 1080);
-    var scale = Math.min(1, maxW / canvas.getWidth());
-    var lower = canvas.lowerCanvasEl, upper = canvas.upperCanvasEl;
-    [lower, upper].forEach(function(el){
-      el.style.width = (canvas.getWidth()*scale) + 'px';
-      el.style.height = (canvas.getHeight()*scale) + 'px';
-    });
+    var avail = host.parentElement.clientWidth;            // ancho disponible del contenedor
+    var scale = Math.min(1, avail / nativeW);              // nunca agranda más allá del nativo
+    canvas.setDimensions({ width: Math.round(nativeW*scale), height: Math.round(nativeH*scale) },
+                         { cssOnly: true });
+    canvas.calcOffset();                                   // recalcula offset para clics correctos
   }
   window.addEventListener('resize', fitToHost);
+  window.addEventListener('orientationchange', fitToHost); // rotación en móvil
 
   // ---- selección de herramienta y color ----
   document.getElementById('toolbar').addEventListener('click', function(e){
@@ -341,7 +348,9 @@
       var resp = await fetch(UPLOAD_URL, { method:'POST', body: fd });
       if(!resp.ok) throw new Error('http '+resp.status);
       var j = await resp.json();
-      var link = j.url || '';
+      // El backend devuelve el PNG crudo (…/slug.png). Compartimos la PÁGINA VESTIDA (…/slug):
+      // logo, métricas, OCR, botones y OG cards. Quitamos la extensión para obtener esa URL.
+      var link = (j.url || '').replace(/\.png$/i, '');
       var box = document.getElementById('newlink');
       document.getElementById('newlinkInput').value = link;
       box.classList.add('show');

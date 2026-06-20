@@ -152,15 +152,13 @@ struct PreferencesView: View {
                         googleConnected = false
                     }
                 } else {
-                    Button {
+                    GoogleSignInButton(connecting: googleConnecting) {
                         Task { await connectGoogle() }
-                    } label: {
-                        if googleConnecting { ProgressView().controlSize(.small) }
-                        else { Text("Conectar con Google") }
                     }
                     .disabled(googleConnecting
                               || settings.googleClientId.isEmpty
                               || settings.googleClientSecret.isEmpty)
+                    .opacity((settings.googleClientId.isEmpty || settings.googleClientSecret.isEmpty) ? 0.5 : 1)
                     Spacer()
                 }
             }

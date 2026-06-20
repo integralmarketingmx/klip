@@ -222,23 +222,15 @@ final class PanelController: NSObject, NSWindowDelegate {
         if let btnWin = statusItem?.button?.window {
             let b = btnWin.frame
             let screen = btnWin.screen ?? NSScreen.main ?? NSScreen.screens.first!
-            panel.setFrameOrigin(clamp(x: b.midX - size.width / 2,
-                                       y: b.minY - gap - size.height, size: size, into: screen.visibleFrame))
+            panel.setFrameOrigin(PanelPositioner.originBelowStatusButton(
+                buttonFrame: b, size: size, gap: gap, visibleFrame: screen.visibleFrame))
         } else {
             let m = NSEvent.mouseLocation
             let screen = NSScreen.screens.first { $0.frame.contains(m) }
                 ?? NSScreen.main ?? NSScreen.screens.first!
-            panel.setFrameOrigin(clamp(x: m.x - size.width / 2,
-                                       y: m.y - size.height - gap, size: size, into: screen.visibleFrame))
+            panel.setFrameOrigin(PanelPositioner.originBelowMouse(
+                mouseLocation: m, size: size, gap: gap, visibleFrame: screen.visibleFrame))
         }
-    }
-
-    private func clamp(x: CGFloat, y: CGFloat, size: NSSize, into vf: NSRect) -> NSPoint {
-        let hiX = max(vf.minX + 8, vf.maxX - size.width - 8)   // garantiza lo <= hi en pantallas pequeñas
-        let hiY = max(vf.minY + 8, vf.maxY - size.height - 8)
-        let cx = min(max(x, vf.minX + 8), hiX)
-        let cy = min(max(y, vf.minY + 8), hiY)
-        return NSPoint(x: cx, y: cy)
     }
 
     // MARK: - Acciones
@@ -348,12 +340,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         let toolbarH: CGFloat = 56          // alto aprox. de la barra de herramientas
         let margin: CGFloat = 48            // aire alrededor de la ventana
         let visible = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let maxW = max(320, visible.width - margin)
-        let maxH = max(240, visible.height - margin - toolbarH)
-        let img = image.size
-        let scale = min(1, min(maxW / max(img.width, 1), maxH / max(img.height, 1)))
-        let displaySize = CGSize(width: (img.width * scale).rounded(.down),
-                                 height: (img.height * scale).rounded(.down))
+        let displaySize = PanelPositioner.annotationDisplaySize(
+            imageSize: image.size, visibleFrame: visible, toolbarHeight: toolbarH, margin: margin)
 
         let view = AnnotationView(
             image: image,

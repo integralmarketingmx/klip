@@ -10,7 +10,8 @@ extension PanelController {
         guard item.kind == .image, let fn = item.imageFileName,
               let img = Storage.shared.loadImage(fileName: fn) else { return }
         do {
-            let link = try await UploaderClient.shared.upload(image: img)
+            // Pasamos el OCR ya guardado del item para que el visor web lo muestre y lo use en las OG cards.
+            let link = try await UploaderClient.shared.upload(image: img, ocrText: item.text)
             manager.setClipboardText(link.absoluteString)   // evita re-capturar la URL como item nuevo
             showUploadToast(link)
         } catch {

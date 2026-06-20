@@ -69,6 +69,14 @@ struct PreferencesView: View {
 
     @State private var costPromptCopied = false
 
+    // MARK: Estado del método de email
+    @StateObject private var smtpPass = APIKeyModel(.smtp)
+    @State private var draftSMTPPass = ""
+    @State private var showSMTPPass = false
+    @State private var googleConnecting = false
+    @State private var googleError: String?
+    @State private var googleConnected = GoogleOAuthClient.shared.isConnected
+
     private let models = ["gpt-4o-mini-transcribe", "whisper-1"]
 
     /// Prompt listo para pegar en cualquier IA y verificar los precios vigentes (cambian seguido).
@@ -102,6 +110,110 @@ struct PreferencesView: View {
             apiKey.refresh(); geminiKey.refresh()
             launchAtLogin = LoginItem.shared.isEnabledOrPending
             accessibilityGranted = Paster.hasAccessibilityPermission
+        }
+    }
+
+    /// Campos del email que cambian según el método elegido.
+    @ViewBuilder
+    private var emailMethodFields: some View {
+        // Campos comunes a todos los métodos que pasan por el backend (no system mail).
+        if settings.mailMethod != .systemMail {
+            TextField("Remitente · tu@empresa.com", text: $settings.mailFrom)
+                .textFieldStyle(.roundedBorder)
+        }
+
+        switch settings.mailMethod {
+        case .dwd:
+            TextField("Servidor (https://klip…)", text: $settings.uploadEndpoint)
+                .textFieldStyle(.roundedBorder)
+            SecureField("Token de API (KLIP_API_TOKEN)", text: $settings.mailApiToken)
+                .textFieldStyle(.roundedBorder)
+            Text("El correo se envía vía Gmail del Workspace (delegación). El token protege el endpoint /send.")
+                .font(.caption).foregroundStyle(.secondary)
+
+        case .oauth:
+            TextField("Servidor (https://klip…)", text: $settings.uploadEndpoint)
+                .textFieldStyle(.roundedBorder)
+            SecureField("Token de API (KLIP_API_TOKEN)", text: $settings.mailApiToken)
+                .textFieldStyle(.roundedBorder)
+            TextField("Google Client ID", text: $settings.googleClientId)
+                .textFieldStyle(.roundedBorder)
+            SecureField("Google Client Secret", text: $settings.googleClientSecret)
+                .textFieldStyle(.roundedBorder)
+            HStack(spacing: 10) {
+                if googleConnected {
+                    Image(systemName: "checkmark.seal.fill").foregroundStyle(.green)
+                    Text(settings.googleAccountEmail.isEmpty
+                         ? "Conectado" : "Conectado como \(settings.googleAccountEmail)")
+                        .font(.caption)
+                    Spacer()
+                    Button("Desconectar") {
+                        GoogleOAuthClient.shared.disconnect()
+                        googleConnected = false
+                    }
+                } else {
+                    Button {
+                        Task { await connectGoogle() }
+                    } label: {
+                        if googleConnecting { ProgressView().controlSize(.small) }
+                        else { Text("Conectar con Google") }
+                    }
+                    .disabled(googleConnecting
+                              || settings.googleClientId.isEmpty
+                              || settings.googleClientSecret.isEmpty)
+                    Spacer()
+                }
+            }
+            if let googleError { Text(googleError).font(.caption).foregroundStyle(.red) }
+            Text("Inicia sesión con tu propia cuenta de Google (scope gmail.send). El correo sale como tú. El token de API protege el endpoint /send.")
+                .font(.caption).foregroundStyle(.secondary)
+
+        case .smtp:
+            TextField("Servidor (https://klip…)", text: $settings.uploadEndpoint)
+                .textFieldStyle(.roundedBorder)
+            SecureField("Token de API (KLIP_API_TOKEN)", text: $settings.mailApiToken)
+                .textFieldStyle(.roundedBorder)
+            TextField("SMTP host · smtp.tuempresa.com", text: $settings.smtpHost)
+                .textFieldStyle(.roundedBorder)
+            TextField("Puerto", value: $settings.smtpPort, format: .number)
+                .textFieldStyle(.roundedBorder)
+            TextField("Usuario SMTP", text: $settings.smtpUser)
+                .textFieldStyle(.roundedBorder)
+            HStack {
+                Group {
+                    if showSMTPPass {
+                        TextField("Contraseña SMTP", text: $draftSMTPPass)
+                    } else {
+                        SecureField(smtpPass.isConfigured ? "•••••• (guardada)" : "Contraseña SMTP",
+                                    text: $draftSMTPPass)
+                    }
+                }
+                .textFieldStyle(.roundedBorder)
+                Button(showSMTPPass ? "Ocultar" : "Ver") { showSMTPPass.toggle() }
+                Button("Guardar") { smtpPass.save(draftSMTPPass); draftSMTPPass = "" }
+                    .disabled(draftSMTPPass.isEmpty)
+            }
+            TextField("Remitente SMTP (opcional, default = remitente)", text: $settings.smtpFrom)
+                .textFieldStyle(.roundedBorder)
+            if let e = smtpPass.errorMessage { Text(e).font(.caption).foregroundStyle(.red) }
+            Text("La contraseña SMTP se guarda CIFRADA en este Mac y viaja por HTTPS al backend, que la usa para el envío y NO la persiste. El correo sale por tu servidor SMTP (STARTTLS).")
+                .font(.caption).foregroundStyle(.secondary)
+
+        case .systemMail:
+            Text("Al enviar, Klip abre el compositor de correo nativo (Mail.app o tu cliente por defecto) con la imagen adjunta. No requiere servidor ni token; funciona con cualquier cuenta.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func connectGoogle() async {
+        googleError = nil
+        googleConnecting = true
+        defer { googleConnecting = false }
+        do {
+            _ = try await GoogleOAuthClient.shared.connect()
+            googleConnected = true
+        } catch {
+            googleError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
 
@@ -157,14 +269,12 @@ struct PreferencesView: View {
             }
 
             Section("Email (enviar capturas)") {
-                TextField("Servidor (https://klip…)", text: $settings.uploadEndpoint)
-                    .textFieldStyle(.roundedBorder)
-                TextField("Remitente · tu@empresa.com", text: $settings.mailFrom)
-                    .textFieldStyle(.roundedBorder)
-                SecureField("Token de API (KLIP_API_TOKEN)", text: $settings.mailApiToken)
-                    .textFieldStyle(.roundedBorder)
-                Text("El correo se envía vía Gmail del Workspace (delegación). El token protege el endpoint /send.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Picker("Método de envío", selection: $settings.mailMethod) {
+                    ForEach(MailMethod.allCases) { m in
+                        Text(m.displayName).tag(m)
+                    }
+                }
+                emailMethodFields
             }
 
             Section("Atajos") {

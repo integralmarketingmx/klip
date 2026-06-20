@@ -137,14 +137,27 @@ struct EmailComposerView: View {
         .overlay(Rectangle().frame(height: 1).foregroundStyle(Color.secondary.opacity(0.2)), alignment: .bottom)
     }
 
+    /// Texto del pie según el método elegido.
+    private var methodHint: String {
+        switch settings.mailMethod {
+        case .dwd:        return "🔒 Se envía vía Klip (Gmail Workspace). Tu cuenta queda como remitente."
+        case .oauth:      return "🔒 Se envía con tu cuenta de Google conectada."
+        case .smtp:       return "🔒 Se envía por tu servidor SMTP."
+        case .systemMail: return "✉️ Se abrirá el compositor de Mail del sistema."
+        }
+    }
+
     private var footer: some View {
         HStack(spacing: 10) {
-            Text("🔒 Se envía vía Klip (Gmail). Tu cuenta queda como remitente.")
+            Text(methodHint)
                 .font(.caption).foregroundStyle(.secondary)
             Spacer()
             Button("Cancelar") { onClose() }
+            // Botón directo al Mail del sistema (método D), siempre disponible como atajo.
+            Button("Mail del sistema") { sendWithSystemMail() }
+                .help("Abre el compositor de correo nativo con la imagen adjunta.")
             Button {
-                Task { await send() }
+                Task { await primarySend() }
             } label: {
                 if sending { ProgressView().controlSize(.small) }
                 else { Text(sent ? "Enviado ✓" : "Enviar ✉") }
@@ -155,20 +168,75 @@ struct EmailComposerView: View {
         .padding(14)
     }
 
+    /// Acción del botón principal: despacha según el método configurado.
+    private func primarySend() async {
+        if settings.mailMethod == .systemMail {
+            sendWithSystemMail()
+            return
+        }
+        await send()
+    }
+
+    /// Método D — abre el compositor nativo del sistema con la imagen adjunta.
+    private func sendWithSystemMail() {
+        let ok = SystemMailSender.compose(
+            subject: subject,
+            body: bodyText,
+            recipients: split(to) + split(cc) + split(bcc),
+            png: attachment,
+            attachmentName: "captura.png"
+        )
+        if ok {
+            sent = true
+            onClose()
+        } else {
+            errorText = "No se pudo abrir el Mail del sistema. ¿Tienes un cliente de correo configurado?"
+        }
+    }
+
     private func send() async {
         errorText = nil
         sending = true
         defer { sending = false }
-        let draft = MailDraft(
+
+        var draft = MailDraft(
             from: settings.mailFrom.trimmingCharacters(in: .whitespacesAndNewlines),
             to: split(to), cc: split(cc), bcc: split(bcc),
             subject: subject, body: bodyText, slug: slug,
-            attachment: attachment
+            attachment: attachment,
+            method: settings.mailMethod.rawValue
         )
+
+        // Datos específicos por método antes de mandar al backend.
+        switch settings.mailMethod {
+        case .smtp:
+            let pass = SecretStore.get(.smtp) ?? ""
+            guard !settings.smtpHost.isEmpty, !settings.smtpUser.isEmpty, !pass.isEmpty else {
+                errorText = "Faltan datos SMTP (host, usuario o contraseña). Configúralos en Preferencias → Email."
+                return
+            }
+            let smtpFrom = settings.smtpFrom.isEmpty ? draft.from : settings.smtpFrom
+            draft.smtp = SMTPConfig(host: settings.smtpHost, port: settings.smtpPort,
+                                    user: settings.smtpUser, pass: pass, from: smtpFrom)
+            // El remitente del correo coincide con el de SMTP.
+            if !smtpFrom.isEmpty { draft.from = smtpFrom }
+        case .oauth:
+            do {
+                draft.accessToken = try await GoogleOAuthClient.shared.freshAccessToken()
+                // El remitente debe ser la cuenta conectada.
+                let acct = settings.googleAccountEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !acct.isEmpty { draft.from = acct }
+            } catch {
+                errorText = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                return
+            }
+        case .dwd, .systemMail:
+            break   // dwd: comportamiento previo; systemMail no pasa por aquí
+        }
+
         do {
             try await MailClient.shared.send(draft)
             sent = true
-            // Cierra tras una breve confirmación.
             try? await Task.sleep(nanoseconds: 900_000_000)
             onClose()
         } catch {

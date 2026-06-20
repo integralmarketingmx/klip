@@ -84,7 +84,8 @@ enum L10n {
         "export.partial": "Se exportarán %d de %d elementos (los demás no tienen contenido exportable).",
         "hotkey.inuse": "Esa combinación ya está en uso por otro atajo de Klip.",
         "common.cancel": "Cancelar",
-        "badge.remote": "Otro dispositivo"
+        "badge.remote": "Otro dispositivo",
+        "history.loadmore": "Cargar más"
     ]
 
     private static let en: [String: String] = [
@@ -162,6 +163,7 @@ enum L10n {
         "export.partial": "%d of %d items will be exported (the rest have no exportable content).",
         "hotkey.inuse": "That combination is already used by another Klip shortcut.",
         "common.cancel": "Cancel",
-        "badge.remote": "Other device"
+        "badge.remote": "Other device",
+        "history.loadmore": "Load more"
     ]
 }

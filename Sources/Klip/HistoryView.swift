@@ -51,6 +51,12 @@ struct HistoryView: View {
     @State private var ocrText = ""
     @State private var ocrRunning = false
 
+    /// Paginación del render (Consejo C5): mantenemos TODO en memoria como hasta ahora, pero solo
+    /// construimos las primeras `visibleLimit` filas para no instanciar miles de `ItemRow` de golpe
+    /// cuando el historial es grande. "Cargar más" suma otra página.
+    private static let pageSize = 100
+    @State private var visibleLimit = HistoryView.pageSize
+
     static let appLogo: NSImage? = {
         if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
            let img = NSImage(contentsOf: url) { return img }
@@ -85,6 +91,20 @@ struct HistoryView: View {
         return base
     }
 
+    /// Filas realmente renderizadas: las primeras `visibleLimit` de la lista filtrada. Si el filtro
+    /// tiene pocos elementos, esto es idéntico a `filtered` (no recorta nada).
+    private var paged: [ClipboardItem] {
+        let f = filtered
+        return f.count > visibleLimit ? Array(f.prefix(visibleLimit)) : f
+    }
+
+    /// Cuántos elementos quedan sin renderizar tras la página actual (0 = ya se muestran todos).
+    private var remaining: Int { max(0, filtered.count - visibleLimit) }
+
+    /// Vuelve a la primera página. Se llama al cambiar filtro/búsqueda/colección o al reabrir el panel
+    /// para no quedar "atascado" mostrando más filas de las que el nuevo filtro amerita.
+    private func resetPaging() { visibleLimit = HistoryView.pageSize }
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -96,9 +116,9 @@ struct HistoryView: View {
         .frame(minWidth: 420, minHeight: 460)
         .background(Color.clear)
         .onAppear { syncVisible(); searchFocused = true }
-        .onChange(of: search) { _, _ in syncVisible() }
-        .onChange(of: filter) { _, _ in syncVisible() }
-        .onChange(of: collectionFilter) { _, _ in syncVisible() }
+        .onChange(of: search) { _, _ in resetPaging(); syncVisible() }
+        .onChange(of: filter) { _, _ in resetPaging(); syncVisible() }
+        .onChange(of: collectionFilter) { _, _ in resetPaging(); syncVisible() }
         .onChange(of: manager.items) { _, _ in
             // Si la colección filtrada dejó de existir (se borró/renombró su último elemento), soltar el
             // filtro: si no, la lista quedaría falsamente vacía sin chip visible para limpiarlo.
@@ -114,6 +134,7 @@ struct HistoryView: View {
         .onChange(of: selecting) { _, newValue in selection.selecting = newValue }
         .onChange(of: selection.openToken) { _, _ in
             search = ""; filter = .all; collectionFilter = nil
+            resetPaging()
             selecting = false; selectedBatch = []
             selection.updateVisible(sortedItems.map(\.id))
             selection.selectedIndex = sortedItems.isEmpty ? -1 : 0
@@ -269,7 +290,7 @@ struct HistoryView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 3) {
-                    ForEach(filtered) { item in
+                    ForEach(paged) { item in
                         ItemRow(item: item,
                                 isSelected: item.id == selection.selectedID,
                                 resetToken: selection.openToken,
@@ -284,6 +305,9 @@ struct HistoryView: View {
                             .id(item.id)
                         if ocrResultID == item.id { ocrBox }
                     }
+                    // "Cargar más": solo aparece si el filtro tiene más elementos que la página actual.
+                    // Para historiales chicos (≤ pageSize) no se muestra → comportamiento idéntico al previo.
+                    if remaining > 0 { loadMoreButton }
                 }
                 .padding(8)
             }
@@ -292,6 +316,24 @@ struct HistoryView: View {
                 withAnimation(.easeInOut(duration: 0.12)) { proxy.scrollTo(newID, anchor: .center) }
             }
         }
+    }
+
+    /// Botón al fondo de la lista que renderiza otra página de filas (incrementa el límite en `pageSize`).
+    private var loadMoreButton: some View {
+        Button {
+            visibleLimit += HistoryView.pageSize
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.down.circle")
+                Text("\(L10n.t("history.loadmore")) (\(remaining))")
+            }
+            .font(.system(size: 12))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background(Capsule().fill(Color.primary.opacity(0.06)))
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 8).padding(.top, 4)
     }
 
     private var emptyState: some View {

@@ -33,8 +33,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panelController = PanelController(manager: manager, statusItem: statusItem)
         panelController.onOpenPreferences = { [weak self] in self?.openPreferences() }
         manager.start()
-        // Si "reemplazar ⌘⇧4" está activo, re-asegura que el atajo del sistema siga desactivado.
-        if Settings.shared.overrideSystemCapture { SystemShortcuts.setMacScreenshotAreaEnabled(false) }
+        // Si "reemplazar ⌘⇧4" está activo: re-asegura el atajo del sistema desactivado y re-afirma ⌘⇧4
+        // como combo de Klip (por si un fallback previo lo revirtió a ⌘⇧2).
+        if Settings.shared.overrideSystemCapture {
+            SystemShortcuts.setMacScreenshotAreaEnabled(false)
+            Settings.shared.captureCombo = .cmdShift4Combo
+        }
         setupHotKeys()
         maybeEnableLoginOnce()
         Settings.shared.$uiLanguage.dropFirst().sink { [weak self] _ in self?.buildMenu() }.store(in: &cancellables)
@@ -145,7 +149,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if voiceHotKey == nil, Settings.shared.voiceCombo != .defaultVoiceCombo {
             Settings.shared.voiceCombo = .defaultVoiceCombo; lastGoodVoiceCombo = .defaultVoiceCombo; makeVoiceHotKey(.defaultVoiceCombo)
         }
-        if captureHotKey == nil, Settings.shared.captureCombo != .defaultCaptureCombo {
+        // No revertir a ⌘⇧2 si el usuario activó "reemplazar ⌘⇧4": ese combo (⌘⇧4) puede fallar al
+        // registrarse hasta que macOS suelte el atajo (tras cerrar sesión). Conservarlo.
+        if captureHotKey == nil, Settings.shared.captureCombo != .defaultCaptureCombo,
+           !Settings.shared.overrideSystemCapture {
             Settings.shared.captureCombo = .defaultCaptureCombo; lastGoodCaptureCombo = .defaultCaptureCombo; makeCaptureHotKey(.defaultCaptureCombo)
         }
     }

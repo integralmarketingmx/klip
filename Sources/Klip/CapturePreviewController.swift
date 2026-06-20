@@ -84,7 +84,15 @@ final class CapturePreviewController: NSObject {
         resolved = true
         timer?.invalidate()
         closeWindow(animated: false)
-        onEdit(image)
+        // El panel de la miniatura es "no-activante": al hacer clic NO activa la app, así que
+        // el editor nacería sin foco (Esc/⌘Z/cambiar herramienta no responderían). Activamos la
+        // app y abrimos el editor en el siguiente ciclo para que sea la ventana key.
+        let img = image
+        let edit = onEdit
+        DispatchQueue.main.async {
+            NSApp.activate(ignoringOtherApps: true)
+            edit(img)
+        }
         selfRef = nil
     }
 

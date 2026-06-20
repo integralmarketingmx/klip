@@ -1,5 +1,11 @@
 import AppKit
 
+// Prueba e2e headless: `--selftest` corre las verificaciones del código real y termina (no abre UI).
+// Siempre contra KLIP_DATA_DIR (dir aislado) para no tocar datos reales.
+if CommandLine.arguments.contains("--selftest") {
+    exit(SelfTest.run() ? 0 : 1)
+}
+
 // Punto de entrada. App accesoria (sin icono en el Dock); vive en la barra de menú.
 // El arranque corre en el hilo principal: AppDelegate es @MainActor (Consejo C2), así que se
 // construye dentro de un contexto MainActor.

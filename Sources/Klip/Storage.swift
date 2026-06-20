@@ -13,6 +13,21 @@ final class Storage {
 
     init() {
         let fm = FileManager.default
+
+        // Override para pruebas (e2e): KLIP_DATA_DIR aísla TODO el almacén en un dir temporal, para
+        // no tocar el historial ni las API keys reales del usuario al correr `--selftest`.
+        if let override = ProcessInfo.processInfo.environment["KLIP_DATA_DIR"], !override.isEmpty {
+            let base = URL(fileURLWithPath: override, isDirectory: true)
+            baseURL = base
+            imagesURL = base.appendingPathComponent("images", isDirectory: true)
+            audioBaseURL = base.appendingPathComponent("audio", isDirectory: true)
+            itemsURL = base.appendingPathComponent("items.json")
+            try? fm.createDirectory(at: imagesURL, withIntermediateDirectories: true)
+            try? fm.createDirectory(at: audioBaseURL, withIntermediateDirectories: true)
+            Self.restrict(base.path, 0o700)
+            return
+        }
+
         let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? fm.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
 

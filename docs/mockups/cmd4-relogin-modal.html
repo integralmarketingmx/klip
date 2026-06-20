@@ -1,0 +1,38 @@
+<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Klip — Modal re-login ⌘⇧4</title>
+<style>
+:root{--bg:#2a2a2c;--stroke:#3a3a3d;--text:#f2f2f3;--muted:#9a9a9f;--accent:#0a84ff;--green:#30d158;--font:-apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:#161617;color:var(--text);font-family:var(--font);display:flex;gap:40px;align-items:center;justify-content:center;flex-wrap:wrap;padding:40px}
+.alert{width:340px;background:var(--bg);border:1px solid var(--stroke);border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.6);padding:20px;text-align:center}
+.ico{font-size:40px;margin-bottom:8px}
+.alert h2{font-size:15px;margin:6px 0}.alert p{font-size:12.5px;color:var(--muted);line-height:1.5;margin:0 0 16px}
+.btns{display:flex;flex-direction:column;gap:8px}
+.btn{height:30px;border-radius:7px;font-size:13px;border:1px solid var(--stroke);background:#323234;color:var(--text);cursor:default}
+.btn.p{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.cap{font-size:11px;color:var(--muted);margin-top:14px}
+.toast{width:300px;background:var(--bg);border:1px solid var(--stroke);border-radius:12px;padding:14px 16px;display:flex;gap:10px;align-items:center;box-shadow:0 14px 40px rgba(0,0,0,.5)}
+.toast .c{width:30px;height:30px;border-radius:50%;background:rgba(48,209,88,.18);color:var(--green);display:grid;place-items:center;font-size:16px;flex:0 0 auto}
+.toast b{font-size:13px}.toast small{display:block;color:var(--muted);font-size:11.5px}
+.lab{position:absolute;margin-top:-120px;font-size:11px;color:var(--muted)}
+</style></head><body>
+<div>
+  <div class="lab">1 · Al activar el switch</div>
+  <div class="alert">
+    <div class="ico">⌨️</div>
+    <h2>Falta un paso para usar ⌘⇧4</h2>
+    <p>Para que <b>⌘⇧4</b> abra Klip en vez de la captura de macOS, hay que <b>cerrar sesión y volver a entrar</b> una vez. macOS suelta el atajo solo al reiniciar tu sesión (no apaga la Mac).</p>
+    <div class="btns">
+      <button class="btn p">Cerrar sesión ahora</button>
+      <button class="btn">Lo haré después</button>
+      <button class="btn">Cancelar (usar ⌘⇧2)</button>
+    </div>
+    <div class="cap">No pierdes nada; tarda ~20 s.</div>
+  </div>
+</div>
+<div>
+  <div class="lab">2 · Al volver a iniciar sesión (auto-verifica)</div>
+  <div class="toast">
+    <div class="c">✓</div>
+    <div><b>⌘⇧4 listo</b><small>Ahora ⌘⇧4 abre la captura de Klip.</small></div>
+  </div>
+</div>
+</body></html>

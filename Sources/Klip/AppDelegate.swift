@@ -40,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             Settings.shared.captureCombo = .cmdShift4Combo
         }
         setupHotKeys()
+        verifyCmd4IfPending()
         maybeEnableLoginOnce()
         Settings.shared.$uiLanguage.dropFirst().sink { [weak self] _ in self?.buildMenu() }.store(in: &cancellables)
     }
@@ -134,6 +135,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func makeCaptureHotKey(_ c: KeyCombo) {
         captureHotKey = HotKey(keyCode: c.keyCode, modifiers: c.carbonModifiers, id: 3) { [weak self] in
             self?.panelController.captureAndAnnotate(fullScreen: false)
+        }
+    }
+
+    /// Hook que corre al arrancar (Klip inicia con la sesión): si quedó pendiente activar ⌘⇧4,
+    /// verifica si ya se registró (macOS lo soltó tras el re-login) y avisa el éxito una sola vez.
+    private func verifyCmd4IfPending() {
+        guard Settings.shared.pendingCmd4Verify, Settings.shared.overrideSystemCapture else { return }
+        // Éxito = el hotkey ⌘⇧4 se registró (captureHotKey != nil con el combo ⌘⇧4).
+        let success = captureHotKey != nil && Settings.shared.captureCombo == .cmdShift4Combo
+        guard success else { return }   // aún no: sigue pendiente, se reintenta el próximo arranque
+        Settings.shared.pendingCmd4Verify = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            alert.messageText = "⌘⇧4 listo ✓"
+            alert.informativeText = "Ahora ⌘⇧4 abre la captura de Klip en vez de la de macOS."
+            alert.addButton(withTitle: "OK")
+            NSApp.activate(ignoringOtherApps: true)
+            alert.runModal()
         }
     }
 

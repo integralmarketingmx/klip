@@ -369,6 +369,29 @@ struct PreferencesView: View {
         DispatchQueue.global(qos: .userInitiated).async {
             SystemShortcuts.setMacScreenshotAreaEnabled(!on)   // on → desactiva ⌘⇧4 de macOS
         }
+        if on { settings.pendingCmd4Verify = true; promptReloginForCmd4() }
+        else  { settings.pendingCmd4Verify = false }
+    }
+
+    /// Modal: ⌘⇧4 necesita cerrar sesión para liberarse. Ofrece cerrar sesión ahora.
+    private func promptReloginForCmd4() {
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "Falta un paso para usar ⌘⇧4"
+        alert.informativeText = "Para que ⌘⇧4 abra Klip en vez de la captura de macOS, necesitas cerrar sesión y volver a entrar una vez. macOS suelta el atajo solo al reiniciar tu sesión (no apaga la Mac). Klip lo verificará al volver."
+        alert.addButton(withTitle: "Cerrar sesión ahora")     // .alertFirstButtonReturn
+        alert.addButton(withTitle: "Lo haré después")          // .alertSecondButtonReturn
+        let cancel = alert.addButton(withTitle: "Cancelar (usar ⌘⇧2)")  // .alertThirdButtonReturn
+        cancel.keyEquivalent = "\u{1b}"
+        NSApp.activate(ignoringOtherApps: true)
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            SystemShortcuts.logOut()                           // macOS pide su confirmación estándar
+        case .alertThirdButtonReturn:
+            setOverrideCmd4(false)                             // revertir: vuelve a ⌘⇧2 y restaura macOS
+        default:
+            break                                              // "Después": queda pendiente, verifica al re-login
+        }
     }
 
     private func setLaunchAtLogin(_ enabled: Bool) {

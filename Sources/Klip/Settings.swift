@@ -109,6 +109,7 @@ final class Settings: ObservableObject {
         static let transFallback = "transcriptionFallback"
         static let alwaysOnTop = "alwaysOnTop"
         static let overrideCmd4 = "overrideSystemCapture"
+        static let pendingCmd4Verify = "pendingCmd4Verify"
         static let keyCode2   = "voiceHotKeyCode"
         static let mods2      = "voiceHotKeyModifiers"
         static let keyCode3   = "captureHotKeyCode"
@@ -140,6 +141,8 @@ final class Settings: ObservableObject {
     @Published var alwaysOnTop: Bool { didSet { d.set(alwaysOnTop, forKey: K.alwaysOnTop) } }
     /// Reemplazar ⌘⇧4 de macOS: Klip desactiva la captura del sistema y la reclama.
     @Published var overrideSystemCapture: Bool { didSet { d.set(overrideSystemCapture, forKey: K.overrideCmd4) } }
+    /// Esperando que el usuario cierre sesión para que ⌘⇧4 quede libre; se verifica al re-arrancar.
+    @Published var pendingCmd4Verify: Bool { didSet { d.set(pendingCmd4Verify, forKey: K.pendingCmd4Verify) } }
     @Published var voiceCombo: KeyCombo   { didSet {
         d.set(Int(voiceCombo.keyCode), forKey: K.keyCode2)
         d.set(Int(voiceCombo.carbonModifiers), forKey: K.mods2)
@@ -175,6 +178,7 @@ final class Settings: ObservableObject {
             K.transFallback: true,
             K.alwaysOnTop: false,
             K.overrideCmd4: false,
+            K.pendingCmd4Verify: false,
             K.keyCode2: Int(kVK_ANSI_I),
             K.mods2: Int(cmdKey | shiftKey),
             K.keyCode3: Int(kVK_ANSI_2),
@@ -198,6 +202,7 @@ final class Settings: ObservableObject {
         transcriptionFallback = d.object(forKey: K.transFallback) as? Bool ?? true
         alwaysOnTop = d.object(forKey: K.alwaysOnTop) as? Bool ?? false
         overrideSystemCapture = d.object(forKey: K.overrideCmd4) as? Bool ?? false
+        pendingCmd4Verify = d.object(forKey: K.pendingCmd4Verify) as? Bool ?? false
         voiceCombo = KeyCombo(keyCode: UInt32(d.integer(forKey: K.keyCode2)),
                               carbonModifiers: UInt32(d.integer(forKey: K.mods2)))
         captureCombo = KeyCombo(keyCode: UInt32(d.integer(forKey: K.keyCode3)),

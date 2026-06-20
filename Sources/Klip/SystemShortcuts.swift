@@ -17,6 +17,12 @@ enum SystemShortcuts {
         run("/System/Library/PrivateFrameworks/SystemAdministration.framework/Resources/activateSettings", ["-u"])
     }
 
+    /// Cierra la sesión del usuario (no apaga la Mac). macOS muestra su confirmación estándar.
+    static func logOut() {
+        // Apple event "log out" a loginwindow; macOS pide confirmar (y permite "Reabrir ventanas").
+        run("/usr/bin/osascript", ["-e", "tell application \"System Events\" to log out"])
+    }
+
     @discardableResult
     private static func run(_ path: String, _ args: [String]) -> Int32 {
         let p = Process()

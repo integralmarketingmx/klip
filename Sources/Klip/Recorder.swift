@@ -15,7 +15,7 @@ enum RecorderState: Equatable {
 /// La transcripción corre en segundo plano: al detener, el grabador queda libre para grabar otra.
 /// @MainActor (Consejo C2): confina el estado de grabación/transcripción al hilo principal.
 @MainActor
-final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
+final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate, AudioRecording {
     @Published private(set) var state: RecorderState = .idle
     @Published private(set) var duration: TimeInterval = 0
     @Published private(set) var level: Float = 0
@@ -44,7 +44,14 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     private var recorder: AVAudioRecorder?
     private var meterTimer: Timer?
     private var currentFileName: String?
-    private let storage = Storage.shared
+    /// Persistencia inyectada (Consejo C4): por defecto el singleton; sustituible por un doble.
+    private let storage: PersistentStoring
+
+    /// Inyección por constructor con default para no romper a los llamadores (`Recorder()`).
+    init(storage: PersistentStoring = Storage.shared) {
+        self.storage = storage
+        super.init()
+    }
     /// Listener de CoreAudio para detectar cambios del micrófono por defecto (p. ej. conectar audífonos).
     /// nonisolated(unsafe): solo se muta en MainActor, pero deinit (nonisolated) necesita quitarlo.
     nonisolated(unsafe) private var deviceListener: AudioObjectPropertyListenerBlock?

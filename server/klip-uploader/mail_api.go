@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -184,10 +185,15 @@ func handleInbox(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	replies, err := pollReplies(ctx, user)
 	if err != nil {
-		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
-		return
+		// Si Gmail (DWD) falla, NO abortamos: aún podemos servir lo recibido por MX.
+		// Logueamos el error y seguimos con una lista vacía de Gmail.
+		log.Printf("aviso: pollReplies (Gmail) falló: %v", err)
+		replies = nil
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"user": user, "replies": replies, "count": len(replies)})
+	// Fusiona las respuestas de Gmail con las recibidas por nuestro MX propio
+	// (inbox_store.go), deduplicadas por msgId (ver mergeReplies).
+	merged := mergeReplies(replies, readAllMXReplies())
+	writeJSON(w, http.StatusOK, map[string]any{"user": user, "replies": merged, "count": len(merged)})
 }
 
 // attachmentFromSlug lee <slug>.png del uploadDir y lo devuelve como adjunto.

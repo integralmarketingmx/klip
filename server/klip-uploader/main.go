@@ -80,6 +80,15 @@ func main() {
 	http.HandleFunc("/inbox", handleInbox)                 // respuestas detectadas (ver mail_api.go)
 	// Rutas más específicas (/upload, /health, /assets/…) tienen prioridad sobre "/".
 	http.HandleFunc("/", handleRoot)
+	// INBOX por MX propio (Sprint 4): arranca el receptor SMTP en una goroutine
+	// SOLO si KLIP_MX_DOMAIN está seteado (ver smtp_server.go). Si no, no arranca.
+	if d := mxDomain(); d != "" {
+		go func() {
+			if err := startSMTPServer(smtpAddr(), d); err != nil {
+				log.Printf("klip-smtp: receptor SMTP terminó con error: %v", err)
+			}
+		}()
+	}
 	log.Printf("klip-uploader escuchando en %s, sirviendo %s", addr, baseURL)
 	log.Fatal(http.ListenAndServe(addr, nil))
 }

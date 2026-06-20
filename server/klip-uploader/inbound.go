@@ -28,6 +28,7 @@ type Reply struct {
 	Date     string `json:"date"`     // valor crudo del header Date
 	HasImage bool   `json:"hasImage"` // true si el mensaje trae adjuntos de imagen
 	MsgID    string `json:"msgId"`    // id de Gmail (para depurar / dedupe)
+	Source   string `json:"source"`   // "gmail" (DWD) o "mx" (receptor SMTP propio)
 }
 
 // reSlugFromMsgID extrae el slug del Message-ID determinista <klip-<slug>@…>.
@@ -110,6 +111,7 @@ func correlateReply(msg *gmailapi.Message) (Reply, bool) {
 		Date:     h["date"],
 		HasImage: messageHasImage(msg),
 		MsgID:    msg.Id,
+		Source:   "gmail",
 	}, true
 }
 

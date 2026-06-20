@@ -72,6 +72,7 @@ final class PanelController: NSObject, NSWindowDelegate {
             recorder: recorder,
             onPick: { [weak self] item in self?.pick(item) },
             onSaveImage: { [weak self] item in self?.saveImage(item) },
+            onAnnotate: { [weak self] item in self?.annotateExistingImage(item) },
             onUploadLink: { [weak self] item in await self?.uploadAndCopyLink(item) },
             onComposeEmail: { [weak self] item in self?.composeEmail(item) },
             onCopyMarkdown: { [weak self] item in self?.copyMarkdown(of: item) },

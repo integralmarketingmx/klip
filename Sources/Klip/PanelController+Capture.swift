@@ -32,7 +32,16 @@ extension PanelController {
         }
     }
 
-    private func showAnnotationWindow(image: NSImage) {
+    /// Reabre el anotador con una imagen ya existente del historial (botón "Ver en grande").
+    /// Lo anotado entra como elemento NUEVO (la original se conserva), igual que al capturar.
+    func annotateExistingImage(_ item: ClipboardItem) {
+        guard item.kind == .image, let fn = item.imageFileName,
+              let img = NSImage(contentsOf: Storage.shared.imageURL(for: fn)) else { return }
+        if !Settings.shared.alwaysOnTop { hide(restoreFocus: false) }
+        showAnnotationWindow(image: img)
+    }
+
+    func showAnnotationWindow(image: NSImage) {
         // Escala la captura para que quepa ENTERA en la pantalla visible (zoom out):
         // así la barra de herramientas no tapa contenido y el usuario no necesita hacer scroll.
         let toolbarH: CGFloat = 56          // alto aprox. de la barra de herramientas

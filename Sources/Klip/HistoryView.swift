@@ -26,6 +26,7 @@ struct HistoryView: View {
     @ObservedObject var settings = Settings.shared
     var onPick: (ClipboardItem) -> Void
     var onSaveImage: (ClipboardItem) -> Void
+    var onAnnotate: (ClipboardItem) -> Void
     var onUploadLink: (ClipboardItem) async -> Void
     var onComposeEmail: (ClipboardItem) -> Void
     var onCopyMarkdown: (ClipboardItem) -> Void
@@ -297,7 +298,7 @@ struct HistoryView: View {
                                 isSelected: item.id == selection.selectedID,
                                 resetToken: selection.openToken,
                                 manager: manager,
-                                onPick: onPick, onSaveImage: onSaveImage,
+                                onPick: onPick, onSaveImage: onSaveImage, onAnnotate: onAnnotate,
                                 onUploadLink: onUploadLink,
                                 onComposeEmail: onComposeEmail,
                                 onCopyMarkdown: onCopyMarkdown, onOCR: { runOCR(item) },
@@ -415,6 +416,7 @@ struct ItemRow: View {
     @ObservedObject var manager: ClipboardManager
     var onPick: (ClipboardItem) -> Void
     var onSaveImage: (ClipboardItem) -> Void
+    var onAnnotate: (ClipboardItem) -> Void
     var onUploadLink: (ClipboardItem) async -> Void
     var onComposeEmail: (ClipboardItem) -> Void
     var onCopyMarkdown: (ClipboardItem) -> Void
@@ -608,9 +610,10 @@ struct ItemRow: View {
                 }
             } else if item.kind == .image {
                 iconButton("doc.on.doc", L10n.t("row.copy")) { onPick(item) }
-                if let fn = item.imageFileName {
+                if item.imageFileName != nil {
+                    // Ver en grande → reabre el anotador con esta imagen (por si quiere anotar más).
                     iconButton("arrow.up.left.and.arrow.down.right", L10n.t("row.viewbig")) {
-                        NSWorkspace.shared.open(Storage.shared.imageURL(for: fn))
+                        onAnnotate(item)
                     }
                 }
                 iconButton("square.and.arrow.down", L10n.t("row.save")) { onSaveImage(item) }

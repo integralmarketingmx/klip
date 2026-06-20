@@ -3,7 +3,9 @@ import AppKit
 import PDFKit
 
 /// Persistencia en disco: metadatos del historial (JSON), imágenes (PNG) y audio temporal (m4a).
-final class Storage {
+/// Conforma `PersistentStoring` (Consejo C4) para que los consumidores dependan del protocolo,
+/// no del singleton concreto. Toda la conformidad se cumple in-place: las firmas ya coincidían.
+final class Storage: PersistentStoring {
     static let shared = Storage()
 
     let baseURL: URL

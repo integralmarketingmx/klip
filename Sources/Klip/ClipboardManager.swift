@@ -11,17 +11,23 @@ struct CaptureSource {
 /// @MainActor (Consejo C2): serializa el acceso al estado compartido (`items`, `lastChangeCount`)
 /// confinándolo al hilo principal; elimina data races con los timers y callbacks de transcripción.
 @MainActor
-final class ClipboardManager: ObservableObject {
+final class ClipboardManager: ObservableObject, ClipboardStoring {
     @Published private(set) var items: [ClipboardItem] = []
 
     private var timer: Timer?
     private var lastChangeCount: Int
     private var maxItems: Int { Settings.shared.maxItems }
-    private let storage = Storage.shared
+    /// Persistencia inyectada (Consejo C4): por defecto el singleton, pero se puede sustituir por
+    /// un doble en pruebas. Es `let` (inmutable) para seguir siendo accesible desde `extractText`,
+    /// que es `nonisolated`.
+    private let storage: PersistentStoring
     private let settings = Settings.shared
     private let ownBundleID = Bundle.main.bundleIdentifier
 
-    init() {
+    /// Inyección por constructor: el store por defecto es `Storage.shared` para no romper a los
+    /// llamadores existentes (AppDelegate sigue usando `ClipboardManager()` sin argumentos).
+    init(storage: PersistentStoring = Storage.shared) {
+        self.storage = storage
         lastChangeCount = NSPasteboard.general.changeCount
         items = storage.loadItems()
         reconcileVoiceNotesOnLoad()

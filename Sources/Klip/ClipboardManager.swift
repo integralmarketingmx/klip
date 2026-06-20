@@ -353,6 +353,15 @@ final class ClipboardManager: ObservableObject {
     // MARK: - Captura anotada y colecciones (vibe coders)
 
     /// Añade una imagen (captura anotada) al historial como un elemento de imagen.
+    /// Copia una captura recién tomada al portapapeles SIN agregarla aún al historial, para que el
+    /// usuario pueda pegarla de inmediato (⌘V) sin tocar la miniatura. Suprime la re-captura del
+    /// monitor: si luego ignora la miniatura, `addCapturedImage` la guarda una sola vez.
+    func copyCapturedToClipboard(_ image: NSImage) {
+        let pb = NSPasteboard.general
+        pb.clearContents(); pb.writeObjects([image])
+        lastChangeCount = pb.changeCount
+    }
+
     func addCapturedImage(_ image: NSImage, name: String? = nil) {
         let fileName = "\(UUID().uuidString).png"
         storage.saveImage(image, fileName: fileName)

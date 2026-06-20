@@ -61,6 +61,11 @@ final class CapturePreviewController: NSObject {
         iv.layer?.masksToBounds = true
         container.addSubview(iv)
 
+        // Badge "Copiado ✓ · ⌘V": avisa que la imagen ya está en el portapapeles, lista para pegar.
+        let badge = makeCopiedBadge()
+        badge.frame.origin = NSPoint(x: pad + 8, y: pad + h - badge.frame.height - 8)
+        container.addSubview(badge)
+
         win.contentView = container
         win.alphaValue = 0
         win.orderFrontRegardless()
@@ -77,6 +82,25 @@ final class CapturePreviewController: NSObject {
         timer = Timer.scheduledTimer(withTimeInterval: holdSeconds, repeats: false) { [weak self] _ in
             self?.resolveSaveOnly()
         }
+    }
+
+    /// Pastilla translúcida "✓ Copiado · ⌘V" para la esquina de la miniatura.
+    private func makeCopiedBadge() -> NSView {
+        let text = "✓ Copiado · ⌘V"
+        let font = NSFont.systemFont(ofSize: 10.5, weight: .semibold)
+        let size = (text as NSString).size(withAttributes: [.font: font])
+        let padX: CGFloat = 8, padY: CGFloat = 4
+        let v = NSView(frame: NSRect(x: 0, y: 0, width: size.width + padX * 2, height: size.height + padY * 2))
+        v.wantsLayer = true
+        v.layer?.backgroundColor = NSColor(white: 0.08, alpha: 0.82).cgColor
+        v.layer?.cornerRadius = 6
+
+        let label = NSTextField(labelWithString: text)
+        label.font = font
+        label.textColor = .white
+        label.frame = NSRect(x: padX, y: padY - 1, width: size.width, height: size.height)
+        v.addSubview(label)
+        return v
     }
 
     private func resolveEdit() {

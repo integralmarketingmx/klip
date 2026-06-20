@@ -10,6 +10,7 @@ final class KeyablePanel: NSPanel {
 
 /// Controla la ventana emergente del historial: vibrancy HUD, posición contextual,
 /// aparición animada, navegación por teclado, cierre al clic fuera, auto-pegado, voz y Markdown.
+@MainActor
 final class PanelController: NSObject, NSWindowDelegate {
     private var panel: KeyablePanel!
     private var effectView: NSVisualEffectView!

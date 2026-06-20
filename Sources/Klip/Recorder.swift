@@ -13,6 +13,8 @@ enum RecorderState: Equatable {
 
 /// Graba una nota de voz a .m4a y la transcribe con OpenAI (no en vivo: nota completa).
 /// La transcripción corre en segundo plano: al detener, el grabador queda libre para grabar otra.
+/// @MainActor (Consejo C2): confina el estado de grabación/transcripción al hilo principal.
+@MainActor
 final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     @Published private(set) var state: RecorderState = .idle
     @Published private(set) var duration: TimeInterval = 0
@@ -44,7 +46,8 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     private var currentFileName: String?
     private let storage = Storage.shared
     /// Listener de CoreAudio para detectar cambios del micrófono por defecto (p. ej. conectar audífonos).
-    private var deviceListener: AudioObjectPropertyListenerBlock?
+    /// nonisolated(unsafe): solo se muta en MainActor, pero deinit (nonisolated) necesita quitarlo.
+    nonisolated(unsafe) private var deviceListener: AudioObjectPropertyListenerBlock?
 
     /// Intención de grabar pendiente (cubre la ventana del permiso async).
     private var startRequested = false
@@ -147,7 +150,7 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         if status == noErr { deviceListener = block }
     }
 
-    private func removeDeviceListener() {
+    nonisolated private func removeDeviceListener() {
         guard let block = deviceListener else { return }
         var addr = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDefaultInputDevice,
@@ -273,7 +276,7 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         return min(1, (db - minDb) / -minDb)
     }
 
-    func audioRecorderDidFinishRecording(_ r: AVAudioRecorder, successfully ok: Bool) {
+    nonisolated func audioRecorderDidFinishRecording(_ r: AVAudioRecorder, successfully ok: Bool) {
         Task { @MainActor in
             removeDeviceListener()   // garantiza quitar el listener también si el delegado se dispara solo
             finishing = false

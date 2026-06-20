@@ -8,6 +8,9 @@ struct CaptureSource {
 }
 
 /// Monitorea el portapapeles, mantiene el historial y expone acciones.
+/// @MainActor (Consejo C2): serializa el acceso al estado compartido (`items`, `lastChangeCount`)
+/// confinándolo al hilo principal; elimina data races con los timers y callbacks de transcripción.
+@MainActor
 final class ClipboardManager: ObservableObject {
     @Published private(set) var items: [ClipboardItem] = []
 
@@ -302,7 +305,9 @@ final class ClipboardManager: ObservableObject {
         lastChangeCount = pb.changeCount   // evita re-capturar la salida de Markdown/OCR como item nuevo
     }
 
-    func extractText(from item: ClipboardItem) -> String? {
+    // nonisolated: el OCR es pesado y debe correr en segundo plano (no toca estado del actor, solo
+    // el item recibido y Storage, que es seguro para hilos).
+    nonisolated func extractText(from item: ClipboardItem) -> String? {
         guard item.kind == .image,
               let f = item.imageFileName,
               let img = storage.loadImage(fileName: f) else { return nil }

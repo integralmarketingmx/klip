@@ -4,6 +4,8 @@ import AVFoundation
 /// Reproductor sencillo para escuchar las notas de voz guardadas (una a la vez).
 /// `playingFileName` permite a la UI mostrar el botón ▶/⏹ del elemento que suena;
 /// `elapsed`/`total` alimentan la barra de progreso de la fila que suena.
+/// @MainActor (Consejo C2): el estado de reproducción se confina al hilo principal.
+@MainActor
 final class AudioPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
     static let shared = AudioPlayer()
 
@@ -65,19 +67,22 @@ final class AudioPlayer: NSObject, ObservableObject, AVAudioPlayerDelegate {
 
     private func stopTicker() { ticker?.invalidate(); ticker = nil }
 
-    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+    // Los callbacks del delegate los invoca AVFoundation fuera del actor → nonisolated; saltan a main.
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         clear(if: player)
     }
 
-    func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+    nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
         clear(if: player)
     }
 
     /// Limpia solo si el que terminó sigue siendo el reproductor actual (evita cortar una reproducción nueva).
-    private func clear(if finished: AVAudioPlayer) {
+    nonisolated private func clear(if finished: AVAudioPlayer) {
         DispatchQueue.main.async { [weak self] in
-            guard let self, finished === self.player else { return }
-            self.stop()
+            MainActor.assumeIsolated {
+                guard let self, finished === self.player else { return }
+                self.stop()
+            }
         }
     }
 }

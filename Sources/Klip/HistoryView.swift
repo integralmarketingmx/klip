@@ -352,7 +352,10 @@ struct HistoryView: View {
             let text = manager.extractText(from: item) ?? ""
             DispatchQueue.main.async {
                 ocrRunning = false; ocrText = text
-                if !text.isEmpty { manager.setClipboardText(text) }
+                if !text.isEmpty {
+                    manager.setClipboardText(text)
+                    manager.setOCRText(text, for: item.id)   // persistir el OCR en el item (buscable)
+                }
             }
         }
     }
@@ -460,19 +463,9 @@ struct ItemRow: View {
 
     private var imageCard: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if let fn = item.imageFileName, let img = Storage.shared.cachedImage(fileName: fn) {
-                ZStack(alignment: .bottomTrailing) {
-                    Image(nsImage: img).resizable().aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: .infinity).frame(height: 150)
-                        .background(Color.primary.opacity(0.05))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.1)))
-                    Text({ let p = img.pixelDimensions; return "\(Int(p.width))×\(Int(p.height))" }())
-                        .font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(.ultraThinMaterial, in: Capsule())
-                        .padding(6)
-                }
+            if let fn = item.imageFileName {
+                // La miniatura se carga/decodifica en segundo plano (no bloquea el scroll de la lista).
+                AsyncThumbnail(fileName: fn)
             }
             VStack(alignment: .leading, spacing: 2) {
                 if let nm = customName {
@@ -709,5 +702,50 @@ struct VoicePlayButton: View {
             }
         }
         .help(L10n.t("voice.play"))
+    }
+}
+
+/// Miniatura de imagen que carga/decodifica fuera del hilo principal. Si la imagen ya está en el
+/// cache de memoria, se muestra al instante; si no, muestra un marcador y la carga en una cola de
+/// fondo, evitando bloquear el scroll del historial al decodificar PNG grandes (Consejo C5).
+struct AsyncThumbnail: View {
+    let fileName: String
+    @State private var image: NSImage?
+
+    var body: some View {
+        Group {
+            if let img = image {
+                ZStack(alignment: .bottomTrailing) {
+                    Image(nsImage: img).resizable().aspectRatio(contentMode: .fit)
+                        .frame(maxWidth: .infinity).frame(height: 150)
+                        .background(Color.primary.opacity(0.05))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.1)))
+                    Text({ let p = img.pixelDimensions; return "\(Int(p.width))×\(Int(p.height))" }())
+                        .font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
+                        .padding(.horizontal, 5).padding(.vertical, 2)
+                        .background(.ultraThinMaterial, in: Capsule())
+                        .padding(6)
+                }
+            } else {
+                RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.05))
+                    .frame(maxWidth: .infinity).frame(height: 150)
+                    .overlay(ProgressView().controlSize(.small))
+            }
+        }
+        .task(id: fileName) { await load() }
+    }
+
+    private func load() async {
+        // Cache hit: instantáneo, sin tocar disco ni hilo de fondo.
+        if let cached = Storage.shared.memoryCachedImage(fileName: fileName) { image = cached; return }
+        image = nil
+        let fn = fileName
+        let loaded = await withCheckedContinuation { (cont: CheckedContinuation<NSImage?, Never>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                cont.resume(returning: Storage.shared.cachedImage(fileName: fn))   // decodifica y cachea
+            }
+        }
+        if fn == fileName { image = loaded }   // ignora si la fila se recicló a otra imagen
     }
 }

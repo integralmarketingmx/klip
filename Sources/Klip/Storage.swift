@@ -118,7 +118,7 @@ final class Storage {
     }
 
     private let imageCache: NSCache<NSString, NSImage> = {
-        let c = NSCache<NSString, NSImage>(); c.countLimit = 60; return c
+        let c = NSCache<NSString, NSImage>(); c.countLimit = 120; return c
     }()
 
     /// Imagen cacheada en memoria: evita releer/decodificar del disco en cada render de la lista.
@@ -127,6 +127,12 @@ final class Storage {
         guard let img = loadImage(fileName: fileName) else { return nil }
         imageCache.setObject(img, forKey: fileName as NSString)
         return img
+    }
+
+    /// Solo cache en memoria (sin tocar el disco): para mostrar al instante si ya está cargada,
+    /// y decidir en la vista si hay que cargarla en segundo plano.
+    func memoryCachedImage(fileName: String) -> NSImage? {
+        imageCache.object(forKey: fileName as NSString)
     }
 
     func pngData(from image: NSImage) -> Data? {

@@ -306,6 +306,15 @@ final class ClipboardManager: ObservableObject {
         return OCR.recognizeText(in: img)
     }
 
+    /// Guarda el texto reconocido por OCR en el propio item de imagen (queda buscable). Llamar en
+    /// el hilo principal tras correr el OCR en segundo plano. No pisa texto previo si el OCR vino vacío.
+    func setOCRText(_ text: String, for id: UUID) {
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, let idx = items.firstIndex(where: { $0.id == id }) else { return }
+        items[idx].text = clean
+        storage.saveItems(items)
+    }
+
     func delete(_ item: ClipboardItem) {
         if item.kind == .image, let f = item.imageFileName { storage.deleteImage(fileName: f) }
         if let af = item.audioFileName { AudioPlayer.shared.stopIfPlaying(af); storage.deleteAudio(fileName: af) }

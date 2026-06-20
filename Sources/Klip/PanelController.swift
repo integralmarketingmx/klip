@@ -47,6 +47,11 @@ final class PanelController: NSObject, NSWindowDelegate {
         buildPanel()
     }
 
+    deinit {
+        // El ciclo panel↔delegate es seguro (PanelController es singleton de la app), se limpia por defensa.
+        panel?.delegate = nil
+    }
+
     private func buildPanel() {
         recorder.onVoiceNoteStarted = { [weak self] fn, dur in self?.manager.beginVoiceNote(audioFileName: fn, duration: dur) }
         recorder.onVoiceNoteTranscribed = { [weak self] id, text in self?.manager.finishVoiceNote(id: id, text: text) }

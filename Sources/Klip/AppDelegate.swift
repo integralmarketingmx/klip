@@ -43,6 +43,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         verifyCmd4IfPending()
         maybeEnableLoginOnce()
         Settings.shared.$uiLanguage.dropFirst().sink { [weak self] _ in self?.buildMenu() }.store(in: &cancellables)
+        // Aviso NO-modal cuando el guardado del historial falla repetidamente (Consejo C6).
+        NotificationCenter.default.addObserver(self, selector: #selector(handlePersistenceFailure(_:)),
+                                               name: Storage.persistenceFailureNotification, object: nil)
+    }
+
+    /// Muestra una advertencia no-bloqueante (ventana flotante) cuando Klip no logra guardar el
+    /// historial en disco tras varios reintentos. No usa runModal para no congelar la interacción.
+    private var persistenceWarningShown = false
+    @objc private func handlePersistenceFailure(_ note: Notification) {
+        guard !persistenceWarningShown else { return }   // un solo aviso por sesión
+        persistenceWarningShown = true
+        let info = (note.userInfo?["message"] as? String) ?? ""
+        let a = NSAlert()
+        a.alertStyle = .warning
+        a.messageText = "Klip no pudo guardar el historial"
+        a.informativeText = "Hubo fallos repetidos al escribir en disco. Revisa el espacio libre o los permisos."
+            + (info.isEmpty ? "" : "\n\n(\(info))")
+        let ok = a.addButton(withTitle: "OK")
+        ok.target = self
+        ok.action = #selector(dismissPersistenceWarning)
+        NSApp.activate(ignoringOtherApps: true)
+        // Ventana flotante presentada SIN runModal: no bloquea el resto de la app.
+        persistenceAlertWindow = a.window
+        a.window.level = .floating
+        a.window.center()
+        a.window.makeKeyAndOrderFront(nil)
+    }
+
+    private var persistenceAlertWindow: NSWindow?
+    @objc private func dismissPersistenceWarning() {
+        persistenceAlertWindow?.orderOut(nil)
+        persistenceAlertWindow = nil
+        persistenceWarningShown = false   // permite avisar de nuevo si vuelve a fallar más tarde
     }
 
     // Una app accesoria (.accessory) no tiene menú principal, así que los campos de texto de

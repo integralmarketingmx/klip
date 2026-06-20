@@ -56,14 +56,45 @@ final class Storage {
         return []
     }
 
+    /// Aviso (NotificationCenter) que dispara `saveItems` cuando el guardado falla repetidamente.
+    /// AppDelegate lo observa para mostrar una alerta NO-modal sin bloquear el flujo del usuario.
+    static let persistenceFailureNotification = Notification.Name("KlipPersistenceFailure")
+
+    /// Cuántos guardados han fallado "en racha" (se resetea al primer guardado exitoso).
+    private(set) var persistenceErrorCount = 0
+
+    /// Persiste el historial. NO lanza por fuera (firma estable para los llamadores), pero por dentro
+    /// reintenta con backoff corto. Si los 3 intentos fallan, incrementa `persistenceErrorCount` y, al
+    /// llegar a ≥3 fallos en racha, dispara un aviso no-modal (NotificationCenter) una sola vez.
     func saveItems(_ items: [ClipboardItem]) {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted]
         guard let data = try? encoder.encode(items) else { return }
-        try? data.write(to: itemsURL, options: .atomic)
-        // El historial puede contener credenciales en texto: restringir a solo el usuario.
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: itemsURL.path)
+
+        var lastError: Error?
+        for attempt in 0..<3 {
+            do {
+                try data.write(to: itemsURL, options: .atomic)
+                // El historial puede contener credenciales en texto: restringir a solo el usuario.
+                try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: itemsURL.path)
+                persistenceErrorCount = 0   // éxito: cortamos la racha
+                return
+            } catch {
+                lastError = error
+                if attempt < 2 { Thread.sleep(forTimeInterval: 0.05 * Double(attempt + 1)) }   // backoff corto
+            }
+        }
+
+        // Todos los intentos fallaron: contabilizar y avisar (no-modal) si la racha llega a 3.
+        persistenceErrorCount += 1
+        if persistenceErrorCount == 3 {
+            let msg = lastError?.localizedDescription ?? "Error desconocido"
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: Self.persistenceFailureNotification,
+                                                object: nil, userInfo: ["message": msg])
+            }
+        }
     }
 
     // MARK: - Imágenes

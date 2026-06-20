@@ -110,6 +110,8 @@ struct PreferencesView: View {
             apiKey.refresh(); geminiKey.refresh()
             launchAtLogin = LoginItem.shared.isEnabledOrPending
             accessibilityGranted = Paster.hasAccessibilityPermission
+            // Re-sincroniza el estado de Google por si se desconectó fuera de esta ventana.
+            googleConnected = GoogleOAuthClient.shared.isConnected
         }
     }
 

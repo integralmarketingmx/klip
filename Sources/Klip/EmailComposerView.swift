@@ -187,7 +187,8 @@ struct EmailComposerView: View {
             attachmentName: "captura.png"
         )
         if ok {
-            sent = true
+            // Hand-off al Mail del sistema: solo PRESENTAMOS el compositor nativo; no sabemos si el
+            // usuario realmente envió. Cerramos sin marcar "enviado ✓" (sería engañoso).
             onClose()
         } else {
             errorText = "No se pudo abrir el Mail del sistema. ¿Tienes un cliente de correo configurado?"

@@ -13,6 +13,8 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -42,17 +44,38 @@ func repliesPath(slug string) string {
 	return filepath.Join(uploadDir, sanitizeSlug(slug)+".replies.json")
 }
 
-// readReplies lee las respuestas MX persistidas de un slug (lista vacía si no hay).
-func readReplies(slug string) []mxReply {
+// readReplies lee las respuestas MX persistidas de un slug. Devuelve (nil, nil) si el archivo no
+// existe, y (nil, err) si existe pero está ilegible/corrupto. DISTINGUIR esto es crítico: tratar un
+// archivo corrupto como "vacío" haría que appendReply lo sobrescribiera, destruyendo respuestas.
+func readReplies(slug string) ([]mxReply, error) {
 	b, err := os.ReadFile(repliesPath(slug))
 	if err != nil {
-		return nil
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
 	}
 	var out []mxReply
-	if json.Unmarshal(b, &out) != nil {
-		return nil
+	if err := json.Unmarshal(b, &out); err != nil {
+		return nil, err
 	}
-	return out
+	return out, nil
+}
+
+// backupCorruptReplies preserva un sidecar de respuestas corrupto (renombrándolo con un sufijo
+// único) en vez de dejar que se sobrescriba. No destruye datos potencialmente recuperables.
+func backupCorruptReplies(path string) {
+	for i := 0; ; i++ {
+		bak := fmt.Sprintf("%s.corrupt-%d", path, i)
+		if _, err := os.Stat(bak); os.IsNotExist(err) {
+			if err := os.Rename(path, bak); err != nil {
+				log.Printf("ERROR: no se pudo respaldar replies corrupto %s: %v", path, err)
+			} else {
+				log.Printf("ADVERTENCIA: %s estaba corrupto; respaldado como %s", path, bak)
+			}
+			return
+		}
+	}
 }
 
 // appendReply agrega una respuesta al sidecar <slug>.replies.json en modo append.
@@ -68,7 +91,13 @@ func appendReply(r mxReply) error {
 		r.Source = "mx"
 	}
 
-	existing := readReplies(slug)
+	existing, err := readReplies(slug)
+	if err != nil {
+		// Corrupto/ilegible: respáldalo y arranca de cero, así no destruimos lo previo (queda en
+		// el backup para recuperación) ni perdemos esta respuesta nueva.
+		backupCorruptReplies(repliesPath(slug))
+		existing = nil
+	}
 	// Dedupe por MsgID (si viene vacío, no deduplica y siempre agrega).
 	if r.MsgID != "" {
 		for _, e := range existing {
@@ -144,7 +173,8 @@ func readAllMXReplies() []mxReply {
 			continue
 		}
 		slug := name[:len(name)-len(suffix)]
-		out = append(out, readReplies(slug)...)
+		reps, _ := readReplies(slug) // vía de solo lectura: si está corrupto, omite (no destruye)
+		out = append(out, reps...)
 	}
 	return out
 }

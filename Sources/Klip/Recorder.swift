@@ -53,8 +53,10 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate, Audio
         super.init()
     }
     /// Listener de CoreAudio para detectar cambios del micrófono por defecto (p. ej. conectar audífonos).
-    /// nonisolated(unsafe): solo se muta en MainActor, pero deinit (nonisolated) necesita quitarlo.
+    /// nonisolated(unsafe): se muta en MainActor (install) y en deinit (nonisolated, al destruir).
+    /// El acceso va protegido por `deviceListenerLock` para ser correcto por construcción.
     nonisolated(unsafe) private var deviceListener: AudioObjectPropertyListenerBlock?
+    private let deviceListenerLock = NSLock()
 
     /// Intención de grabar pendiente (cubre la ventana del permiso async).
     private var startRequested = false
@@ -144,6 +146,8 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate, Audio
     /// AVAudioRecorder se queda en el dispositivo viejo y el medidor se congela → finalizamos la nota
     /// de forma limpia (se guarda y transcribe lo grabado) en vez de dejar un estado roto.
     private func installDeviceListener() {
+        deviceListenerLock.lock()
+        defer { deviceListenerLock.unlock() }
         guard deviceListener == nil else { return }
         var addr = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDefaultInputDevice,
@@ -158,6 +162,8 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate, Audio
     }
 
     nonisolated private func removeDeviceListener() {
+        deviceListenerLock.lock()
+        defer { deviceListenerLock.unlock() }
         guard let block = deviceListener else { return }
         var addr = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDefaultInputDevice,

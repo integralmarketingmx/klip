@@ -291,17 +291,19 @@ func makeSnippet(body string) string {
 	return body
 }
 
-// imageExtFromMIME mapea un content-type de imagen a una extensión de archivo.
+// imageExtFromMIME mapea un content-type de imagen a una extensión de archivo. Compara el media
+// type EXACTO (sin parámetros) en vez de strings.Contains, que daría falsos positivos como
+// "application/vnd.custom+webp-processor" -> .webp. Solo devuelve extensiones que handleRoot sirve.
 func imageExtFromMIME(ct string) string {
-	ct = strings.ToLower(ct)
-	switch {
-	case strings.Contains(ct, "jpeg"), strings.Contains(ct, "jpg"):
+	mt := strings.ToLower(strings.TrimSpace(strings.SplitN(ct, ";", 2)[0]))
+	switch mt {
+	case "image/jpeg", "image/jpg":
 		return ".jpg"
-	case strings.Contains(ct, "png"):
+	case "image/png":
 		return ".png"
-	case strings.Contains(ct, "gif"):
+	case "image/gif":
 		return ".gif"
-	case strings.Contains(ct, "webp"):
+	case "image/webp":
 		return ".webp"
 	default:
 		return ".img"

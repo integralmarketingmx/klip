@@ -10,8 +10,20 @@ final class HotKey {
     private let callback: () -> Void
 
     /// Mapa estático para que el callback en C (sin captura) pueda localizar la instancia.
+    /// El handler de Carbon corre en el main thread (igual que init/deinit), pero protegemos el
+    /// acceso con un lock para que sea correcto por construcción y no dependa de esa suposición.
     private static var instances: [UInt32: HotKey] = [:]
+    private static let instancesLock = NSLock()
     private static var handlerInstalled = false
+
+    private static func setInstance(_ id: UInt32, _ hk: HotKey?) {
+        instancesLock.lock(); defer { instancesLock.unlock() }
+        instances[id] = hk
+    }
+    private static func instance(_ id: UInt32) -> HotKey? {
+        instancesLock.lock(); defer { instancesLock.unlock() }
+        return instances[id]
+    }
 
     /// - Parameters:
     ///   - keyCode: código de tecla virtual (p. ej. kVK_ANSI_V).
@@ -19,7 +31,7 @@ final class HotKey {
     init?(keyCode: UInt32, modifiers: UInt32, id: UInt32 = 1, callback: @escaping () -> Void) {
         self.id = id
         self.callback = callback
-        HotKey.instances[id] = self
+        HotKey.setInstance(id, self)
 
         HotKey.installHandlerIfNeeded()
 
@@ -27,7 +39,7 @@ final class HotKey {
         let status = RegisterEventHotKey(keyCode, modifiers, hotKeyID,
                                          GetApplicationEventTarget(), 0, &hotKeyRef)
         if status != noErr {
-            HotKey.instances[id] = nil
+            HotKey.setInstance(id, nil)
             return nil
         }
     }
@@ -47,7 +59,7 @@ final class HotKey {
                               MemoryLayout<EventHotKeyID>.size,
                               nil,
                               &hkID)
-            if let instance = HotKey.instances[hkID.id] {
+            if let instance = HotKey.instance(hkID.id) {
                 DispatchQueue.main.async { instance.callback() }
             }
             return noErr
@@ -73,6 +85,6 @@ final class HotKey {
     deinit {
         if let hotKeyRef { UnregisterEventHotKey(hotKeyRef) }
         if let eventHandler { RemoveEventHandler(eventHandler) }
-        HotKey.instances[id] = nil
+        HotKey.setInstance(id, nil)
     }
 }

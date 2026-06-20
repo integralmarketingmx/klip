@@ -278,7 +278,12 @@ final class Storage: PersistentStoring {
         // silencia: deja el respaldo en su sitio y lo registra para recuperación manual.
         func restore(_ live: URL, _ bak: URL) {
             guard fm.fileExists(atPath: bak.path) else { return }   // sin bak: el live es el original intacto
-            try? fm.removeItem(at: live)
+            // Limpia el destino solo si existe; si la limpieza falla, lo registra (la causa raíz del
+            // posible fallo de move/copy posterior) en vez de silenciarla con try?.
+            if fm.fileExists(atPath: live.path) {
+                do { try fm.removeItem(at: live) }
+                catch { NSLog("Klip importBackup: no se pudo limpiar el destino \(live.lastPathComponent) antes de restaurar: \(error.localizedDescription)") }
+            }
             do {
                 try fm.moveItem(at: bak, to: live)
             } catch {
@@ -309,11 +314,29 @@ final class Storage: PersistentStoring {
         }
 
         [bakItems, bakImages, bakAudio].forEach { try? fm.removeItem(at: $0) }   // éxito: limpiar respaldos
+
+        // Consistencia: descarta items que referencien archivos ausentes en la copia (ZIP parcial o
+        // corrupto), para no dejar el historial con miniaturas/audio rotos. Si se descartó algo,
+        // reescribe items.json con la lista consistente (el copiado trajo el original completo).
+        let consistent = decoded.filter { item in
+            if let img = item.imageFileName,
+               !fm.fileExists(atPath: imagesURL.appendingPathComponent(img).path) { return false }
+            if let af = item.audioFileName,
+               !fm.fileExists(atPath: audioBaseURL.appendingPathComponent(af).path) { return false }
+            return true
+        }
+        if consistent.count != decoded.count {
+            NSLog("Klip importBackup: %d de %d items descartados por archivos ausentes en la copia",
+                  decoded.count - consistent.count, decoded.count)
+            let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted]
+            if let d = try? enc.encode(consistent) { try? d.write(to: itemsURL, options: .atomic) }
+        }
+
         Self.restrict(itemsURL.path, 0o600)
         Self.restrict(imagesURL.path, 0o700)
         Self.restrict(audioBaseURL.path, 0o700)
         imageCache.removeAllObjects()
-        return decoded
+        return consistent
     }
 
     private static func err(_ msg: String) -> NSError {

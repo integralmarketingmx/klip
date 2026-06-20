@@ -333,7 +333,7 @@ func handleRoot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Binarios: se sirven crudos (incluye <slug>-og.png y notas de voz .m4a/.mp3/...).
-	if strings.HasSuffix(p, ".png") || strings.HasSuffix(p, ".jpg") || strings.HasSuffix(p, ".jpeg") || strings.HasSuffix(p, ".gif") || isAudioExt(strings.ToLower(filepath.Ext(p))) {
+	if strings.HasSuffix(p, ".png") || strings.HasSuffix(p, ".jpg") || strings.HasSuffix(p, ".jpeg") || strings.HasSuffix(p, ".gif") || strings.HasSuffix(p, ".webp") || isAudioExt(strings.ToLower(filepath.Ext(p))) {
 		serveBinary(w, r, p)
 		return
 	}

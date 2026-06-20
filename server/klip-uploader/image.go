@@ -24,6 +24,7 @@ func reencodeJPEGUnder(outPath string, img image.Image, maxBytes int64) error {
 		err = jpeg.Encode(f, img, &jpeg.Options{Quality: q})
 		f.Close()
 		if err != nil {
+			os.Remove(outPath) // no dejar un JPEG a medias que luego se sirva como preview
 			return err
 		}
 		if fi, e := os.Stat(outPath); e == nil && fi.Size() <= maxBytes {

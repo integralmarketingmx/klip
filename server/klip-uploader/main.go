@@ -75,6 +75,7 @@ func main() {
 	http.HandleFunc("/upload", handleUpload)
 	http.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, "ok") })
 	http.HandleFunc("/assets/logo.png", handleLogo)
+	http.HandleFunc("/assets/fabric.min.js", handleFabric) // anotador web (Sprint 2), ver edit.go
 	// Rutas más específicas (/upload, /health, /assets/…) tienen prioridad sobre "/".
 	http.HandleFunc("/", handleRoot)
 	log.Printf("klip-uploader escuchando en %s, sirviendo %s", addr, baseURL)
@@ -263,6 +264,11 @@ func handleRoot(w http.ResponseWriter, r *http.Request) {
 	// Binarios: se sirven crudos (incluye <slug>-og.png y notas de voz .m4a/.mp3/...).
 	if strings.HasSuffix(p, ".png") || strings.HasSuffix(p, ".jpg") || strings.HasSuffix(p, ".jpeg") || strings.HasSuffix(p, ".gif") || isAudioExt(strings.ToLower(filepath.Ext(p))) {
 		serveBinary(w, r, p)
+		return
+	}
+	// Anotador web: /<slug>/edit (Sprint 2, ver edit.go).
+	if s, ok := strings.CutSuffix(p, "/edit"); ok && s != "" && !strings.Contains(s, "/") {
+		serveEdit(w, r, s)
 		return
 	}
 	// Cualquier otra ruta sin extensión de imagen: página vestida del slug.

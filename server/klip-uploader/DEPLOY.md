@@ -58,6 +58,41 @@ $ curl -F "file=@shot.png" https://klip.p0wzj8.easypanel.host/upload
 $ curl -I https://klip.p0wzj8.easypanel.host/hwrniu.png   # HTTP 200 image/png
 ```
 
+## INBOX por MX propio (Sprint 4)
+
+Receptor SMTP que recibe respuestas a `klip+<slug>@<dominio>`, las correlaciona por slug
+y las guarda como `<slug>.replies.json` (+ imágenes `<slug>.reply-N.png`) en `uploadDir`.
+El endpoint `GET /inbox` fusiona estas respuestas con las leídas por Gmail (DWD), dedupe por `msgId`.
+
+### Env vars
+
+| Env | Default | Descripción |
+|---|---|---|
+| `KLIP_MX_DOMAIN` | (vacío) | Dominio que recibe el MX (p.ej. `klip.integralmarketing.agency`). **Si está vacío, el receptor SMTP NO arranca** (no rompe el deploy actual). |
+| `KLIP_SMTP_ADDR` | `:25` | Dirección de escucha del receptor SMTP. |
+
+Correlación de slug (orden de confianza): (1) destinatario `klip+<slug>@`, (2) header
+`In-Reply-To`/`References` con el Message-ID determinista `<klip-<slug>@…>`, (3) token
+`[klip#<slug>]` en el asunto (case-insensitive, tolera `Re:/RE:/Fwd:`). Sin auth (recepción
+entrante de MX), límite 25 MB, sin TLS obligatorio. Destinatarios fuera de patrón → 550.
+
+### Retención
+
+`deploy/klip-purge.sh` ya respeta los hilos abiertos: si existe `<slug>.replies.json`, el
+slug **no se purga** (ni imagen ni derivados).
+
+### Pasos de infra que faltan para activarlo
+
+1. **DNS MX**: crear registro `MX` del dominio elegido (p.ej. `klip.integralmarketing.agency`)
+   apuntando al host del VPS (`31.220.31.197`), prioridad 10. Además un `A` del host del MX.
+2. **Puerto 25 entrante**: abrir TCP/25 en el firewall del VPS/Hostinger y exponerlo al
+   contenedor (`-p 25:25` o `-e KLIP_SMTP_ADDR=0.0.0.0:25` + `EXPOSE 25` en el run de docker).
+   Nota: muchos proveedores cloud bloquean el 25 entrante por defecto; verificar con Hostinger.
+3. **Arranque**: relanzar el contenedor agregando `-e KLIP_MX_DOMAIN=klip.integralmarketing.agency`
+   (y opcional `-e KLIP_SMTP_ADDR=0.0.0.0:25`) al `docker run`.
+4. **Reverse DNS / SPF (opcional, anti-spam)**: PTR del IP y SPF del dominio para que las
+   respuestas no se marquen como spam si algún MTA hace checks salientes.
+
 ## Notas
 
 - `Caddyfile.snippet` y `deploy/klip-uploader.service` quedan como referencia para un despliegue

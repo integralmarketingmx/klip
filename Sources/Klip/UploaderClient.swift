@@ -39,16 +39,19 @@ final class UploaderClient {
     }
 
     /// Sube una NSImage como PNG y devuelve la URL pública. Lanza `UploadError` tipado.
-    func upload(image: NSImage) async throws -> URL {
+    /// `ocrText`: texto OCR ya detectado del item (opcional); se manda como campo multipart
+    /// para que el visor web lo muestre como bloque copiable y lo use en las OG cards.
+    func upload(image: NSImage, ocrText: String? = nil) async throws -> URL {
         guard let png = Storage.shared.pngData(from: image) else { throw UploadError.encodingFailed }
-        return try await upload(pngData: png)
+        return try await upload(pngData: png, ocrText: ocrText)
     }
 
     /// Sube datos PNG ya codificados (evita recodificar si el llamador ya los tiene).
-    func upload(pngData: Data) async throws -> URL {
+    /// `ocrText`: texto OCR opcional; se agrega como campo multipart `ocr`.
+    func upload(pngData: Data, ocrText: String? = nil) async throws -> URL {
         guard let url = URL(string: "\(endpoint)/upload") else { throw UploadError.invalidEndpoint }
 
-        // Cuerpo multipart/form-data con un único campo `file` = captura.png.
+        // Cuerpo multipart/form-data: campo `file` = captura.png y, si hay, campo `ocr` = texto.
         let boundary = "Boundary-\(UUID().uuidString)"
         var body = Data()
         func append(_ s: String) { if let d = s.data(using: .utf8) { body.append(d) } }
@@ -57,6 +60,13 @@ final class UploaderClient {
         append("Content-Type: image/png\r\n\r\n")
         body.append(pngData)
         append("\r\n")
+        // Campo de texto OCR opcional (solo si trae contenido tras recortar espacios).
+        if let ocr = ocrText?.trimmingCharacters(in: .whitespacesAndNewlines), !ocr.isEmpty {
+            append("--\(boundary)\r\n")
+            append("Content-Disposition: form-data; name=\"ocr\"\r\n\r\n")
+            append(ocr)
+            append("\r\n")
+        }
         append("--\(boundary)--\r\n")
 
         var req = URLRequest(url: url)

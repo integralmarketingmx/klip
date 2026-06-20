@@ -33,6 +33,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panelController = PanelController(manager: manager, statusItem: statusItem)
         panelController.onOpenPreferences = { [weak self] in self?.openPreferences() }
         manager.start()
+        // Si "reemplazar ⌘⇧4" está activo, re-asegura que el atajo del sistema siga desactivado.
+        if Settings.shared.overrideSystemCapture { SystemShortcuts.setMacScreenshotAreaEnabled(false) }
         setupHotKeys()
         maybeEnableLoginOnce()
         Settings.shared.$uiLanguage.dropFirst().sink { [weak self] _ in self?.buildMenu() }.store(in: &cancellables)

@@ -323,7 +323,12 @@ final class PanelController: NSObject, NSWindowDelegate {
             DispatchQueue.main.async {
                 self.capturing = false
                 guard let img else { return }   // el usuario canceló o faltó permiso de grabación de pantalla
-                self.showAnnotationWindow(image: img)
+                // Miniatura estilo macOS: clic → editar; ignorar → solo guardar en Klip.
+                let preview = CapturePreviewController(
+                    image: img,
+                    onEdit: { [weak self] image in self?.showAnnotationWindow(image: image) },
+                    onSaveOnly: { [weak self] image in self?.manager.addCapturedImage(image) })
+                preview.show()
             }
         }
     }

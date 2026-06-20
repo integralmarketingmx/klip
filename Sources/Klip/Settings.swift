@@ -25,6 +25,9 @@ struct KeyCombo: Equatable {
     /// Atajo de captura por defecto: ⌘⇧2 (Cmd+Shift+2).
     static let defaultCaptureCombo = KeyCombo(keyCode: UInt32(kVK_ANSI_2),
                                               carbonModifiers: UInt32(cmdKey | shiftKey))
+    /// ⌘⇧4 (el de captura nativo de macOS) — para "reemplazar ⌘⇧4".
+    static let cmdShift4Combo = KeyCombo(keyCode: UInt32(kVK_ANSI_4),
+                                         carbonModifiers: UInt32(cmdKey | shiftKey))
 
     var isValid: Bool { carbonModifiers != 0 }
 
@@ -105,6 +108,7 @@ final class Settings: ObservableObject {
         static let aiProv     = "aiProvider"
         static let transFallback = "transcriptionFallback"
         static let alwaysOnTop = "alwaysOnTop"
+        static let overrideCmd4 = "overrideSystemCapture"
         static let keyCode2   = "voiceHotKeyCode"
         static let mods2      = "voiceHotKeyModifiers"
         static let keyCode3   = "captureHotKeyCode"
@@ -134,6 +138,8 @@ final class Settings: ObservableObject {
     @Published var transcriptionFallback: Bool { didSet { d.set(transcriptionFallback, forKey: K.transFallback) } }
     /// Fijar el panel de historial: no se auto-cierra al hacer clic fuera ni al capturar.
     @Published var alwaysOnTop: Bool { didSet { d.set(alwaysOnTop, forKey: K.alwaysOnTop) } }
+    /// Reemplazar ⌘⇧4 de macOS: Klip desactiva la captura del sistema y la reclama.
+    @Published var overrideSystemCapture: Bool { didSet { d.set(overrideSystemCapture, forKey: K.overrideCmd4) } }
     @Published var voiceCombo: KeyCombo   { didSet {
         d.set(Int(voiceCombo.keyCode), forKey: K.keyCode2)
         d.set(Int(voiceCombo.carbonModifiers), forKey: K.mods2)
@@ -168,6 +174,7 @@ final class Settings: ObservableObject {
             K.aiProv: "openai",
             K.transFallback: true,
             K.alwaysOnTop: false,
+            K.overrideCmd4: false,
             K.keyCode2: Int(kVK_ANSI_I),
             K.mods2: Int(cmdKey | shiftKey),
             K.keyCode3: Int(kVK_ANSI_2),
@@ -190,6 +197,7 @@ final class Settings: ObservableObject {
         aiProvider = d.string(forKey: K.aiProv) ?? "openai"
         transcriptionFallback = d.object(forKey: K.transFallback) as? Bool ?? true
         alwaysOnTop = d.object(forKey: K.alwaysOnTop) as? Bool ?? false
+        overrideSystemCapture = d.object(forKey: K.overrideCmd4) as? Bool ?? false
         voiceCombo = KeyCombo(keyCode: UInt32(d.integer(forKey: K.keyCode2)),
                               carbonModifiers: UInt32(d.integer(forKey: K.mods2)))
         captureCombo = KeyCombo(keyCode: UInt32(d.integer(forKey: K.keyCode3)),

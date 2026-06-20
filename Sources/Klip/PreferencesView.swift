@@ -165,6 +165,11 @@ struct PreferencesView: View {
                     HotKeyField(combo: $settings.captureCombo, onChange: onCaptureHotKeyChange) }
                 Text("Pulsa el campo y teclea la combinación, o usa ⌄ para elegir una sugerida.")
                     .font(.caption).foregroundStyle(.secondary)
+                Toggle("Reemplazar ⌘⇧4 de macOS", isOn: Binding(
+                    get: { settings.overrideSystemCapture },
+                    set: { setOverrideCmd4($0) }))
+                Text("Desactiva la captura del sistema (⌘⇧4) y se la asigna a Klip. Al apagarlo, la restaura y Klip vuelve a ⌘⇧2.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
 
             Section("Transcripción de voz") {
@@ -349,6 +354,20 @@ struct PreferencesView: View {
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(Capsule().fill(Color.green.opacity(0.16)))
             }
+        }
+    }
+
+    /// Activa/desactiva "Reemplazar ⌘⇧4": desactiva el atajo del sistema y asigna ⌘⇧4 a Klip
+    /// (o lo restaura y vuelve Klip a ⌘⇧2).
+    private func setOverrideCmd4(_ on: Bool) {
+        // Lo rápido en el hilo principal (que el switch responda al instante).
+        settings.overrideSystemCapture = on
+        let combo = on ? KeyCombo.cmdShift4Combo : .defaultCaptureCombo
+        settings.captureCombo = combo
+        onCaptureHotKeyChange(combo)                            // re-registra el hotkey global de Klip
+        // Lo lento (defaults + activateSettings) en segundo plano: no congela la UI.
+        DispatchQueue.global(qos: .userInitiated).async {
+            SystemShortcuts.setMacScreenshotAreaEnabled(!on)   // on → desactiva ⌘⇧4 de macOS
         }
     }
 

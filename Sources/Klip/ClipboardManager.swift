@@ -310,6 +310,29 @@ final class ClipboardManager: ObservableObject {
         items = newItems
     }
 
+    /// Borra los elementos creados DESDE `cutoff` (los más recientes, estilo "borrar última hora").
+    /// Conserva los fijados. Devuelve cuántos borró.
+    @discardableResult
+    func clearSince(_ cutoff: Date) -> Int {
+        let toDelete = items.filter { !$0.pinned && $0.createdAt >= cutoff }
+        guard !toDelete.isEmpty else { return 0 }
+        AudioPlayer.shared.stop()
+        for it in toDelete {
+            if it.kind == .image, let f = it.imageFileName { storage.deleteImage(fileName: f) }
+            if let af = it.audioFileName { AudioPlayer.shared.stopIfPlaying(af); storage.deleteAudio(fileName: af) }
+            voicePasteGuards.removeValue(forKey: it.id)
+        }
+        let ids = Set(toDelete.map { $0.id })
+        items.removeAll { ids.contains($0.id) }
+        storage.saveItems(items)
+        return toDelete.count
+    }
+
+    /// Cuántos elementos se borrarían desde `cutoff` (no fijados). Para confirmar antes de borrar.
+    func countSince(_ cutoff: Date) -> Int {
+        items.filter { !$0.pinned && $0.createdAt >= cutoff }.count
+    }
+
     func clearAll() {
         AudioPlayer.shared.stop()
         voicePasteGuards.removeAll()

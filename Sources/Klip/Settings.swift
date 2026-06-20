@@ -104,6 +104,7 @@ final class Settings: ObservableObject {
         static let transLang  = "transcriptionLanguage"
         static let aiProv     = "aiProvider"
         static let transFallback = "transcriptionFallback"
+        static let alwaysOnTop = "alwaysOnTop"
         static let keyCode2   = "voiceHotKeyCode"
         static let mods2      = "voiceHotKeyModifiers"
         static let keyCode3   = "captureHotKeyCode"
@@ -131,6 +132,8 @@ final class Settings: ObservableObject {
     @Published var aiProvider: String { didSet { d.set(aiProvider, forKey: K.aiProv) } }
     /// Si el proveedor elegido (Gemini) falla, reintenta con OpenAI cuando haya clave.
     @Published var transcriptionFallback: Bool { didSet { d.set(transcriptionFallback, forKey: K.transFallback) } }
+    /// Fijar el panel de historial: no se auto-cierra al hacer clic fuera ni al capturar.
+    @Published var alwaysOnTop: Bool { didSet { d.set(alwaysOnTop, forKey: K.alwaysOnTop) } }
     @Published var voiceCombo: KeyCombo   { didSet {
         d.set(Int(voiceCombo.keyCode), forKey: K.keyCode2)
         d.set(Int(voiceCombo.carbonModifiers), forKey: K.mods2)
@@ -164,6 +167,7 @@ final class Settings: ObservableObject {
             K.transLang: "es",
             K.aiProv: "openai",
             K.transFallback: true,
+            K.alwaysOnTop: false,
             K.keyCode2: Int(kVK_ANSI_I),
             K.mods2: Int(cmdKey | shiftKey),
             K.keyCode3: Int(kVK_ANSI_2),
@@ -185,6 +189,7 @@ final class Settings: ObservableObject {
         transcriptionLanguage = d.string(forKey: K.transLang) ?? "es"
         aiProvider = d.string(forKey: K.aiProv) ?? "openai"
         transcriptionFallback = d.object(forKey: K.transFallback) as? Bool ?? true
+        alwaysOnTop = d.object(forKey: K.alwaysOnTop) as? Bool ?? false
         voiceCombo = KeyCombo(keyCode: UInt32(d.integer(forKey: K.keyCode2)),
                               carbonModifiers: UInt32(d.integer(forKey: K.mods2)))
         captureCombo = KeyCombo(keyCode: UInt32(d.integer(forKey: K.keyCode3)),

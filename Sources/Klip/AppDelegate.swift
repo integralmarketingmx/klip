@@ -91,7 +91,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(withTitle: L10n.t("menu.export"), action: #selector(exportBackup), keyEquivalent: "")
         menu.addItem(withTitle: L10n.t("menu.import"), action: #selector(importBackup), keyEquivalent: "")
-        menu.addItem(withTitle: L10n.t("menu.clear"), action: #selector(clearAll), keyEquivalent: "")
+        // Submenú "Borrar historial" por rango de tiempo (borra lo más reciente; conserva los fijados).
+        let clearItem = NSMenuItem(title: L10n.t("menu.clear"), action: nil, keyEquivalent: "")
+        let clearMenu = NSMenu()
+        let ranges: [(String, Int)] = [
+            ("Última hora", 3600),
+            ("Último día", 86_400),
+            ("Última semana", 604_800),
+            ("Último mes", 2_592_000),
+            ("Todo", 0)
+        ]
+        for (title, secs) in ranges {
+            if secs == 0 { clearMenu.addItem(.separator()) }
+            let it = clearMenu.addItem(withTitle: title, action: #selector(clearRange(_:)), keyEquivalent: "")
+            it.tag = secs
+            it.target = self
+        }
+        clearItem.submenu = clearMenu
+        menu.addItem(clearItem)
         menu.addItem(.separator())
         menu.addItem(withTitle: L10n.t("menu.quit"), action: #selector(quit), keyEquivalent: "q")
         menu.items.forEach { if $0.target == nil { $0.target = self } }
@@ -259,6 +276,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         cancel.keyEquivalent = "\u{1b}"   // Esc cancela (no se asigna solo en español)
         NSApp.activate(ignoringOtherApps: true)
         if alert.runModal() == .alertFirstButtonReturn { manager.clearAll() }
+    }
+
+    /// Borra el historial por rango: tag = segundos hacia atrás (0 = todo). Conserva los fijados.
+    @objc private func clearRange(_ sender: NSMenuItem) {
+        let secs = sender.tag
+        let label = sender.title.lowercased()
+        let count = secs == 0 ? manager.items.count : manager.countSince(Date(timeIntervalSinceNow: -Double(secs)))
+        guard count > 0 else {
+            let none = NSAlert()
+            none.messageText = "Nada que borrar"
+            none.informativeText = "No hay elementos en ese rango (los fijados no se borran)."
+            none.addButton(withTitle: "OK")
+            NSApp.activate(ignoringOtherApps: true)
+            none.runModal()
+            return
+        }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = secs == 0 ? "¿Borrar todo el historial?" : "¿Borrar el historial de \(label)?"
+        alert.informativeText = "Se eliminarán \(count) elemento\(count == 1 ? "" : "s"). Los fijados se conservan. No se puede deshacer."
+        let del = alert.addButton(withTitle: "Borrar")
+        del.hasDestructiveAction = true
+        let cancel = alert.addButton(withTitle: L10n.t("common.cancel"))
+        cancel.keyEquivalent = "\u{1b}"
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        if secs == 0 { manager.clearAll() }
+        else { manager.clearSince(Date(timeIntervalSinceNow: -Double(secs))) }
     }
     @objc private func quit() { NSApp.terminate(nil) }
 

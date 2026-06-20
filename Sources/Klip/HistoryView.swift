@@ -151,6 +151,12 @@ struct HistoryView: View {
                     .buttonStyle(.borderless).help(L10n.t("sel.toggle"))
                     Button { onCaptureAnnotate() } label: { Image(systemName: "camera.viewfinder") }
                         .buttonStyle(.borderless).help(L10n.t("capture.annotate"))
+                    Button { settings.alwaysOnTop.toggle() } label: {
+                        Image(systemName: settings.alwaysOnTop ? "pin.fill" : "pin")
+                            .foregroundStyle(settings.alwaysOnTop ? Color.accentColor : .primary)
+                    }
+                    .buttonStyle(.borderless)
+                    .help(settings.alwaysOnTop ? "Desfijar (se cierra al hacer clic fuera)" : "Fijar arriba (no se cierra al capturar)")
                     Button { onVoiceRecord() } label: {
                         Image(systemName: recorder.state == .recording ? "mic.fill" : "mic")
                             .foregroundStyle(recorder.state == .recording ? .red : .primary)

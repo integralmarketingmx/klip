@@ -32,6 +32,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     /// Evita lanzar una segunda exportación (PDF/ZIP) mientras una está en curso.
     private var exportInFlight = false
     private var isRenaming = false
+    /// true mientras corre `screencapture -i` (no auto-cerrar el panel por el clic de selección).
+    private var capturing = false
     private let cornerRadius: CGFloat = 12
     private var recordingPanel: NSPanel?
     private var guideWindow: NSWindow?
@@ -152,7 +154,8 @@ final class PanelController: NSObject, NSWindowDelegate {
             matching: [.leftMouseDown, .rightMouseDown]) { e in e }
         globalClickMonitor = NSEvent.addGlobalMonitorForEvents(
             matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            guard let self, !self.isModalActive, !self.isRenaming, !self.recorder.isRecording else { return }
+            guard let self, !self.isModalActive, !self.isRenaming, !self.recorder.isRecording,
+                  !self.capturing, !Settings.shared.alwaysOnTop else { return }   // fijado: no auto-cerrar
             self.hide(restoreFocus: false)
         }
     }
@@ -306,7 +309,9 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     /// Captura una zona (selector nativo) o la pantalla completa y abre el editor de anotación.
     func captureAndAnnotate(fullScreen: Bool) {
-        hide(restoreFocus: false)
+        // Si el historial está fijado (always on top), no lo cerramos al capturar.
+        if !Settings.shared.alwaysOnTop { hide(restoreFocus: false) }
+        capturing = true   // que el clic de selección no auto-cierre el panel fijado
         let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("klipcap-\(UUID().uuidString).png")
         DispatchQueue.global(qos: .userInitiated).async {
             let p = Process()
@@ -316,6 +321,7 @@ final class PanelController: NSObject, NSWindowDelegate {
             let img = (try? Data(contentsOf: tmp)).flatMap { NSImage(data: $0) }   // carga completa antes de borrar
             try? FileManager.default.removeItem(at: tmp)
             DispatchQueue.main.async {
+                self.capturing = false
                 guard let img else { return }   // el usuario canceló o faltó permiso de grabación de pantalla
                 self.showAnnotationWindow(image: img)
             }
@@ -660,10 +666,13 @@ final class PanelController: NSObject, NSWindowDelegate {
     // MARK: - NSWindowDelegate (respaldo de cierre al perder el foco)
 
     func windowDidResignKey(_ notification: Notification) {
-        guard !isModalActive, !isRenaming, !recorder.isRecording else { return }
+        // Fijado (always on top) o capturando: no cerrar al perder el foco.
+        guard !isModalActive, !isRenaming, !recorder.isRecording,
+              !capturing, !Settings.shared.alwaysOnTop else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self, self.panel.isVisible, !self.isModalActive, !self.isRenaming,
-                  !self.recorder.isRecording, !self.panel.isKeyWindow else { return }
+                  !self.recorder.isRecording, !self.capturing, !Settings.shared.alwaysOnTop,
+                  !self.panel.isKeyWindow else { return }
             self.hide(restoreFocus: false)
         }
     }

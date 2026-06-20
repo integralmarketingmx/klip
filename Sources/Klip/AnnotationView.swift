@@ -62,6 +62,8 @@ final class AnnotationCanvasNSView: NSView {
     private(set) var selectedTextID: UUID?
     private var movingTextID: UUID?
     private var moveOffset = CGSize.zero
+    private var redoStack: [Annotation] = []     // para Rehacer (⌘⇧Z)
+    var onToolPick: ((AnnoTool) -> Void)?        // el menú contextual avisa a SwiftUI qué herramienta eligió
 
     init(image: NSImage) {
         self.image = image
@@ -141,6 +143,7 @@ final class AnnotationCanvasNSView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
+        window?.makeFirstResponder(self)   // recupera el foco del teclado (flechas, ⌫) tras tocar la barra
 
         if tool == .text {
             commitActiveText()
@@ -199,9 +202,79 @@ final class AnnotationCanvasNSView: NSView {
         guard let d = draft else { return }
         if d.tool == .pen || hypot(d.end.x - d.start.x, d.end.y - d.start.y) > 3 {
             annotations.append(d)
+            redoStack.removeAll()   // una acción nueva invalida el historial de rehacer
         }
         draft = nil
         needsDisplay = true
+    }
+
+    // MARK: - Teclado (flechas mueven la selección, ⌫ la borra)
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        window?.makeFirstResponder(self)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        // Mientras se edita texto, el NSTextField es first responder, así que esto no interfiere.
+        let step: CGFloat = event.modifierFlags.contains(.shift) ? 10 : 1
+        switch event.keyCode {
+        case 51, 117:   // ⌫ borrar / supr
+            if selectedTextID != nil { deleteSelection(); return }
+        case 123: if selectedTextID != nil { moveSelection(dx: -step, dy: 0); return }  // ←
+        case 124: if selectedTextID != nil { moveSelection(dx:  step, dy: 0); return }  // →
+        case 125: if selectedTextID != nil { moveSelection(dx: 0, dy:  step); return }  // ↓ (vista flipped)
+        case 126: if selectedTextID != nil { moveSelection(dx: 0, dy: -step); return }  // ↑
+        default: break
+        }
+        super.keyDown(with: event)
+    }
+
+    // MARK: - Menú contextual (clic derecho)
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        let copy = menu.addItem(withTitle: "Copiar", action: #selector(ctxCopy), keyEquivalent: "c")
+        let undoIt = menu.addItem(withTitle: "Deshacer", action: #selector(ctxUndo), keyEquivalent: "z")
+        let redoIt = menu.addItem(withTitle: "Rehacer", action: #selector(ctxRedo), keyEquivalent: "Z")
+        redoIt.isEnabled = !redoStack.isEmpty
+        undoIt.isEnabled = !annotations.isEmpty || activeTextField != nil
+        if selectedTextID != nil {
+            menu.addItem(withTitle: "Borrar selección", action: #selector(ctxDelete), keyEquivalent: "\u{8}")
+        }
+        menu.addItem(.separator())
+        let toolsItem = menu.addItem(withTitle: "Herramienta", action: nil, keyEquivalent: "")
+        let sub = NSMenu()
+        sub.autoenablesItems = false
+        for t in AnnoTool.allCases {
+            let it = sub.addItem(withTitle: t.help, action: #selector(ctxTool(_:)), keyEquivalent: "")
+            it.representedObject = t.rawValue
+            it.target = self
+            it.state = (t == tool) ? .on : .off
+        }
+        toolsItem.submenu = sub
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Limpiar todo", action: #selector(ctxClear), keyEquivalent: "")
+        for item in menu.items where item.action != nil { item.target = self }
+        _ = copy
+        return menu
+    }
+
+    @objc private func ctxCopy()  { copyToPasteboard() }
+    @objc private func ctxUndo()  { undo() }
+    @objc private func ctxRedo()  { redo() }
+    @objc private func ctxDelete(){ deleteSelection() }
+    @objc private func ctxClear() { clearAll() }
+    @objc private func ctxTool(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let t = AnnoTool(rawValue: raw) else { return }
+        tool = t
+        onToolPick?(t)
+    }
+
+    func copyToPasteboard() {
+        guard let img = flattened() else { return }
+        let pb = NSPasteboard.general; pb.clearContents(); pb.writeObjects([img])
     }
 
     // MARK: - Texto in-place (editable / movible / redimensionable)
@@ -245,8 +318,40 @@ final class AnnotationCanvasNSView: NSView {
                            start: origin, end: origin, text: text, fontSize: editFontSize)
         if let id { a.id = id }   // conserva identidad al reeditar
         annotations.append(a)
+        redoStack.removeAll()
         selectedTextID = a.id
         needsDisplay = true
+    }
+
+    // MARK: - Deshacer / rehacer / borrar / mover selección
+
+    func redo() {
+        guard !redoStack.isEmpty else { return }
+        annotations.append(redoStack.removeLast())
+        needsDisplay = true
+    }
+
+    func deleteSelection() {
+        guard let id = selectedTextID, let idx = annotations.firstIndex(where: { $0.id == id }) else { return }
+        redoStack.append(annotations.remove(at: idx))
+        selectedTextID = nil
+        needsDisplay = true
+    }
+
+    func moveSelection(dx: CGFloat, dy: CGFloat) {
+        guard let id = selectedTextID, let idx = annotations.firstIndex(where: { $0.id == id }) else { return }
+        annotations[idx].start.x += dx
+        annotations[idx].start.y += dy
+        annotations[idx].end = annotations[idx].start
+        needsDisplay = true
+    }
+
+    /// Esc: si se está editando texto, cancela la edición y devuelve true (no cerrar el editor todavía).
+    @discardableResult
+    func cancelEditingIfActive() -> Bool {
+        guard activeTextField != nil else { return false }
+        activeTextField?.removeFromSuperview(); activeTextField = nil; editingID = nil
+        return true
     }
 
     // MARK: - Tamaño y color
@@ -292,7 +397,10 @@ final class AnnotationCanvasNSView: NSView {
         if activeTextField != nil {
             activeTextField?.removeFromSuperview(); activeTextField = nil; editingID = nil; return
         }
-        if !annotations.isEmpty { annotations.removeLast(); selectedTextID = nil; needsDisplay = true }
+        if !annotations.isEmpty {
+            redoStack.append(annotations.removeLast())
+            selectedTextID = nil; needsDisplay = true
+        }
     }
     func clearAll() {
         activeTextField?.removeFromSuperview(); activeTextField = nil
@@ -359,6 +467,8 @@ struct AnnotationCanvas: NSViewRepresentable {
     func updateNSView(_ v: AnnotationCanvasNSView, context: Context) {
         v.tool = tool
         v.color = NSColor(color)
+        let toolBinding = $tool
+        v.onToolPick = { t in toolBinding.wrappedValue = t }   // menú contextual → estado de SwiftUI
     }
 }
 
@@ -388,6 +498,18 @@ struct AnnotationView: View {
                 .frame(width: canvasSize.width, height: canvasSize.height)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color(nsColor: .windowBackgroundColor))
+        }
+        // Atajos de teclado del editor (botones ocultos: no saturan la barra).
+        .background {
+            Button("") { copy() }.keyboardShortcut("c", modifiers: .command).hidden()
+            Button("") { handle.view?.undo() }.keyboardShortcut("z", modifiers: .command).hidden()
+            Button("") { handle.view?.redo() }.keyboardShortcut("z", modifiers: [.command, .shift]).hidden()
+            Button("") { save() }.keyboardShortcut("s", modifiers: .command).hidden()
+            // Esc: primero cancela la edición de texto en curso; si no hay, cierra el editor.
+            Button("") { if handle.view?.cancelEditingIfActive() != true { onClose() } }
+                .keyboardShortcut(.cancelAction).hidden()
+            // ⌘W cerrar (al final para que Esc tenga su propia ruta).
+            Button("") { onClose() }.keyboardShortcut("w", modifiers: .command).hidden()
         }
     }
 
@@ -420,9 +542,11 @@ struct AnnotationView: View {
                 .buttonStyle(.borderless).help("Limpiar")
             Divider().frame(height: 20)
             Button { copy() } label: { Label("Copiar", systemImage: "doc.on.doc") }
+                .help("Copiar al portapapeles (⌘C)")
             Button { save() } label: { Label("Guardar", systemImage: "square.and.arrow.down") }
-            Button { addToKlip() } label: { Label("Añadir a Klip", systemImage: "plus") }
+            Button { addToKlip() } label: { Label("Copiar y añadir a Klip", systemImage: "plus") }
                 .buttonStyle(.borderedProminent)
+                .help("Copia al portapapeles y guarda en el historial de Klip")
         }
         .padding(10)
     }
@@ -442,6 +566,7 @@ struct AnnotationView: View {
     }
     private func addToKlip() {
         guard let img = handle.view?.flattened() else { return }
+        let pb = NSPasteboard.general; pb.clearContents(); pb.writeObjects([img])   // copia además de guardar
         onAddToKlip(img)
         onClose()
     }

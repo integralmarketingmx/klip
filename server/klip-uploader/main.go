@@ -70,6 +70,8 @@ func main() {
 	http.HandleFunc("/upload", handleUpload)
 	http.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, "ok") })
 	http.HandleFunc("/assets/logo.png", handleLogo)
+	http.HandleFunc("/send", handleSend)   // email vía Gmail DWD (ver mail_api.go)
+	http.HandleFunc("/inbox", handleInbox) // respuestas detectadas (ver mail_api.go)
 	// Rutas más específicas (/upload, /health, /assets/…) tienen prioridad sobre "/".
 	http.HandleFunc("/", handleRoot)
 	log.Printf("klip-uploader escuchando en %s, sirviendo %s", addr, baseURL)

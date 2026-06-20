@@ -366,6 +366,10 @@ final class PanelController: NSObject, NSWindowDelegate {
             styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
         w.title = "Anotar captura"
         w.isReleasedWhenClosed = false
+        // Se mantiene SIEMPRE visible (por encima, sin desaparecer al cambiar de app) hasta que el
+        // usuario cierre/guarde/Esc/⌘W. Antes podía esfumarse al perder el foco.
+        w.level = .floating
+        w.hidesOnDeactivate = false
         w.contentView = NSHostingView(rootView: view)
         w.center()
         annotationWindow = w

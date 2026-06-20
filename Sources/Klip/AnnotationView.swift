@@ -574,7 +574,19 @@ struct AnnotationView: View {
         sp.nameFieldStringValue = "klip-anotacion.png"
         sp.canCreateDirectories = true
         NSApp.activate(ignoringOtherApps: true)
-        sp.begin { resp in if resp == .OK, let url = sp.url { try? png.write(to: url, options: .atomic) } }
+        // Manejo del resultado: al guardar OK, abrir la carpeta con el archivo seleccionado y cerrar el
+        // editor (guardar es una acción terminal). Si se cancela o falla, el editor se queda visible.
+        let handleResult: (NSApplication.ModalResponse) -> Void = { resp in
+            guard resp == .OK, let url = sp.url else { return }   // cancelado: no cerrar
+            do {
+                try png.write(to: url, options: .atomic)
+                NSWorkspace.shared.activateFileViewerSelecting([url])   // abre la carpeta y selecciona el PNG
+                onClose()
+            } catch { NSSound.beep() }                                  // error real: avisar, no cerrar
+        }
+        // Como hoja del editor para que el nivel .floating de la ventana no tape el panel de guardado.
+        if let win = handle.view?.window { sp.beginSheetModal(for: win, completionHandler: handleResult) }
+        else { sp.begin(completionHandler: handleResult) }
     }
     private func addToKlip() {
         guard let img = handle.view?.flattened() else { return }

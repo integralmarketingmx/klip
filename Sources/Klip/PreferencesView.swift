@@ -426,6 +426,9 @@ struct PreferencesView: View {
         commitFocusedField()
         // Tras volcar el binding en este ciclo de runloop, leer el valor ya actualizado.
         DispatchQueue.main.async {
+            // Guard: si el campo quedó vacío (p. ej. doble clic tras un guardado que ya lo limpió),
+            // no llamar save("") — evita un mensaje de error espurio sobre un guardado válido.
+            guard !draftKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
             if apiKey.save(draftKey) { draftKey = ""; showKey = false }
         }
     }
@@ -433,6 +436,7 @@ struct PreferencesView: View {
     private func saveGemini() {
         commitFocusedField()
         DispatchQueue.main.async {
+            guard !draftGeminiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
             if geminiKey.save(draftGeminiKey) { draftGeminiKey = ""; showGeminiKey = false }
         }
     }

@@ -68,6 +68,7 @@ type meta struct {
 var (
 	viewMu       sync.Mutex
 	viewCounters = map[string]*int64{}
+	viewFlushMu  sync.Mutex // serializa el read-modify-write del sidecar al volcar el contador
 )
 
 func main() {
@@ -379,12 +380,16 @@ func countView(slug string, ua string) {
 		viewCounters[slug] = c
 	}
 	viewMu.Unlock()
-	n := atomic.AddInt64(c, 1)
-	// Flush al sidecar (best-effort).
+	atomic.AddInt64(c, 1)
+	// Flush al sidecar (best-effort). Serializado para que dos vistas concurrentes del mismo slug
+	// no se pisen el read-modify-write; escribimos el valor ACTUAL del contador (monótono), no un
+	// `n` capturado antes, así el último flush siempre persiste el valor más alto.
+	viewFlushMu.Lock()
 	if m, found := readMeta(slug); found {
-		m.Views = n
+		m.Views = atomic.LoadInt64(c)
 		_ = writeMeta(slug, m)
 	}
+	viewFlushMu.Unlock()
 }
 
 // isCrawler detecta bots de unfurl por User-Agent para no inflar el contador.

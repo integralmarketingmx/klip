@@ -279,20 +279,29 @@ final class ClipboardManager: ObservableObject, ClipboardStoring {
     }
 
     private func trimAndSave() {
-        if items.count > maxItems {
-            let keep = items.filter { isProtectedFromTrim($0) }
-            var trimmable = items.filter { !isProtectedFromTrim($0) }
-            let allowed = max(0, maxItems - keep.count)
-            if trimmable.count > allowed {
-                for it in trimmable[allowed...] {
-                    if it.kind == .image, let f = it.imageFileName { storage.deleteImage(fileName: f) }
-                    if let af = it.audioFileName { AudioPlayer.shared.stopIfPlaying(af); storage.deleteAudio(fileName: af) }
-                }
-                trimmable = Array(trimmable.prefix(allowed))
-            }
-            items = (keep + trimmable).sorted { $0.createdAt > $1.createdAt }
+        guard items.count > maxItems else { storage.saveItems(items); return }
+
+        let keep = items.filter { isProtectedFromTrim($0) }
+        var trimmable = items.filter { !isProtectedFromTrim($0) }
+        let allowed = max(0, maxItems - keep.count)
+        var removed: [ClipboardItem] = []
+        if trimmable.count > allowed {
+            removed = Array(trimmable[allowed...])
+            trimmable = Array(trimmable.prefix(allowed))
         }
-        storage.saveItems(items)
+        let snapshot = items
+        items = (keep + trimmable).sorted { $0.createdAt > $1.createdAt }
+        // Persiste PRIMERO el historial recortado; solo si quedó en disco borramos los archivos de
+        // los elementos recortados. Si el guardado falla, revertimos y NO borramos nada (evita
+        // que items.json quede referenciando archivos ya borrados).
+        guard storage.saveItems(items) else {
+            items = snapshot
+            return
+        }
+        for it in removed {
+            if it.kind == .image, let f = it.imageFileName { storage.deleteImage(fileName: f) }
+            if let af = it.audioFileName { AudioPlayer.shared.stopIfPlaying(af); storage.deleteAudio(fileName: af) }
+        }
     }
 
     func applyMaxItems() { trimAndSave() }
@@ -384,13 +393,21 @@ final class ClipboardManager: ObservableObject, ClipboardStoring {
 
     func clearAll() {
         AudioPlayer.shared.stop()
+        // Persiste el historial vacío PRIMERO; solo si quedó en disco borramos los archivos.
+        // Si el guardado falla, revertimos en memoria y no borramos nada.
+        let snapshot = items
+        let guardsSnapshot = voicePasteGuards
         voicePasteGuards.removeAll()
-        for it in items {
+        items.removeAll()
+        guard storage.saveItems(items) else {
+            items = snapshot
+            voicePasteGuards = guardsSnapshot
+            return
+        }
+        for it in snapshot {
             if it.kind == .image, let f = it.imageFileName { storage.deleteImage(fileName: f) }
             if let af = it.audioFileName { storage.deleteAudio(fileName: af) }
         }
-        items.removeAll()
-        storage.saveItems(items)
     }
 
     func togglePin(_ item: ClipboardItem) {

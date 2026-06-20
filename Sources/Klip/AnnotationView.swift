@@ -582,7 +582,20 @@ struct AnnotationView: View {
                 try png.write(to: url, options: .atomic)
                 NSWorkspace.shared.activateFileViewerSelecting([url])   // abre la carpeta y selecciona el PNG
                 onClose()
-            } catch { NSSound.beep() }                                  // error real: avisar, no cerrar
+            } catch {
+                // Error real (permisos, disco lleno…): avisar con detalle y dejar el editor abierto
+                // para reintentar (cerrarlo perdería la anotación). Antes solo sonaba un beep.
+                NSSound.beep()
+                let alert = NSAlert()
+                alert.messageText = "No se pudo guardar la imagen"
+                alert.informativeText = error.localizedDescription
+                alert.alertStyle = .warning
+                if let win = handle.view?.window {
+                    alert.beginSheetModal(for: win, completionHandler: nil)
+                } else {
+                    alert.runModal()
+                }
+            }
         }
         // Como hoja del editor para que el nivel .floating de la ventana no tape el panel de guardado.
         if let win = handle.view?.window { sp.beginSheetModal(for: win, completionHandler: handleResult) }

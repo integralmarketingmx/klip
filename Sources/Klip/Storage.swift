@@ -37,9 +37,19 @@ final class Storage: PersistentStoring {
         let oldBase = appSupport.appendingPathComponent("PastaClip", isDirectory: true)
 
         // Migración: si existe la carpeta vieja y aún no la nueva, mover entera (rename atómico).
+        // Si el move falla (p. ej. cruza volúmenes), copiamos; pero si la COPIA falla a medias,
+        // borramos la copia parcial para reintentar en el próximo arranque y conservamos la vieja
+        // intacta como respaldo (no usar una carpeta nueva potencialmente corrupta).
         if fm.fileExists(atPath: oldBase.path), !fm.fileExists(atPath: newBase.path) {
-            do { try fm.moveItem(at: oldBase, to: newBase) }
-            catch { try? fm.copyItem(at: oldBase, to: newBase) }
+            do {
+                try fm.moveItem(at: oldBase, to: newBase)
+            } catch {
+                do {
+                    try fm.copyItem(at: oldBase, to: newBase)
+                } catch {
+                    try? fm.removeItem(at: newBase)   // limpia copia parcial → migra de nuevo luego
+                }
+            }
         }
 
         baseURL = newBase
@@ -199,6 +209,9 @@ final class Storage: PersistentStoring {
         let fm = FileManager.default
         guard let names = try? fm.contentsOfDirectory(atPath: dir.path) else { return }
         for name in names where !keep.contains(name) {
+            // Log de cada huérfano borrado: si una corrupción parcial de items.json dejara
+            // referencias truncadas, esto deja rastro para diagnosticar una pérdida silenciosa.
+            NSLog("Klip: pruning huérfano %@/%@", dir.lastPathComponent, name)
             try? fm.removeItem(at: dir.appendingPathComponent(name))
         }
     }

@@ -27,6 +27,7 @@ struct HistoryView: View {
     var onPick: (ClipboardItem) -> Void
     var onSaveImage: (ClipboardItem) -> Void
     var onUploadLink: (ClipboardItem) async -> Void
+    var onComposeEmail: (ClipboardItem) -> Void
     var onCopyMarkdown: (ClipboardItem) -> Void
     var onCopyAllMarkdown: () -> Void
     var onOpenPreferences: () -> Void
@@ -298,6 +299,7 @@ struct HistoryView: View {
                                 manager: manager,
                                 onPick: onPick, onSaveImage: onSaveImage,
                                 onUploadLink: onUploadLink,
+                                onComposeEmail: onComposeEmail,
                                 onCopyMarkdown: onCopyMarkdown, onOCR: { runOCR(item) },
                                 onRename: onRename, onRetryTranscription: onRetryTranscription,
                                 onSaveAsFile: onSaveAsFile, onCopyAsCode: onCopyAsCode,
@@ -414,6 +416,7 @@ struct ItemRow: View {
     var onPick: (ClipboardItem) -> Void
     var onSaveImage: (ClipboardItem) -> Void
     var onUploadLink: (ClipboardItem) async -> Void
+    var onComposeEmail: (ClipboardItem) -> Void
     var onCopyMarkdown: (ClipboardItem) -> Void
     var onOCR: () -> Void
     var onRename: (ClipboardItem) -> Void
@@ -622,6 +625,7 @@ struct ItemRow: View {
                         }
                     }
                 }
+                iconButton("envelope", "Enviar por email") { onComposeEmail(item) }
                 iconButton("text.viewfinder", L10n.t("row.ocr")) { onOCR() }
             } else if isCredential {
                 iconButton("doc.on.doc", L10n.t("row.copy")) { onPick(item) }

@@ -156,6 +156,17 @@ struct PreferencesView: View {
                     .onChange(of: settings.maxItems) { _, _ in onMaxItemsChange() }
             }
 
+            Section("Email (enviar capturas)") {
+                TextField("Servidor (https://klip…)", text: $settings.uploadEndpoint)
+                    .textFieldStyle(.roundedBorder)
+                TextField("Remitente · tu@empresa.com", text: $settings.mailFrom)
+                    .textFieldStyle(.roundedBorder)
+                SecureField("Token de API (KLIP_API_TOKEN)", text: $settings.mailApiToken)
+                    .textFieldStyle(.roundedBorder)
+                Text("El correo se envía vía Gmail del Workspace (delegación). El token protege el endpoint /send.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
             Section("Atajos") {
                 HStack { Text("Mostrar historial:"); Spacer()
                     HotKeyField(combo: $settings.combo, onChange: onHotKeyChange) }

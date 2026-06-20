@@ -1,0 +1,108 @@
+import Foundation
+import AppKit
+
+/// Errores tipados del envío de email por el server Klip (POST /send).
+enum MailError: Error, LocalizedError {
+    case invalidEndpoint          // el endpoint configurado no forma una URL válida
+    case missingToken             // falta el shared secret (KLIP_API_TOKEN) en Preferencias
+    case noRecipients             // no se indicó ningún destinatario
+    case transport(Error)         // sin red / fallo de transporte
+    case http(status: Int, body: String)  // el server respondió != 2xx
+    case invalidResponse          // respuesta inesperada
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidEndpoint:  return "El servidor de email no es una dirección válida."
+        case .missingToken:     return "Falta el token de API de Klip (configúralo en Preferencias)."
+        case .noRecipients:     return "Agrega al menos un destinatario."
+        case .transport(let e): return "Error de red al enviar: \(e.localizedDescription)"
+        case .http(let s, let b): return "El servidor respondió con error (HTTP \(s)). \(b)"
+        case .invalidResponse:  return "La respuesta del servidor no es válida."
+        }
+    }
+}
+
+/// Datos del correo a enviar; el server arma el MIME y lo manda vía Gmail DWD.
+struct MailDraft {
+    var from: String
+    var to: [String]
+    var cc: [String]
+    var bcc: [String]
+    var subject: String
+    var body: String
+    var slug: String                 // slug Klip para correlación (puede ir vacío)
+    var attachment: Data?            // PNG opcional a adjuntar directamente
+    var attachmentName: String = "captura.png"
+}
+
+/// Cliente del endpoint POST /send del server Klip. Manda multipart si hay adjunto,
+/// si no, JSON. Protege con el shared secret en el header `X-Klip-Token`.
+final class MailClient {
+    static let shared = MailClient()
+    private let session: URLSession
+    init(session: URLSession = .shared) { self.session = session }
+
+    /// Endpoint base (reusa el mismo que la subida de capturas).
+    private var endpoint: String {
+        Settings.shared.uploadEndpoint
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    }
+
+    func send(_ draft: MailDraft) async throws {
+        guard let url = URL(string: "\(endpoint)/send") else { throw MailError.invalidEndpoint }
+        let token = Settings.shared.mailApiToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !token.isEmpty else { throw MailError.missingToken }
+        guard !(draft.to.isEmpty && draft.cc.isEmpty && draft.bcc.isEmpty) else { throw MailError.noRecipients }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue(token, forHTTPHeaderField: "X-Klip-Token")
+        req.timeoutInterval = 60
+
+        if let png = draft.attachment {
+            // multipart/form-data con el adjunto.
+            let boundary = "Boundary-\(UUID().uuidString)"
+            var body = Data()
+            func append(_ s: String) { if let d = s.data(using: .utf8) { body.append(d) } }
+            func field(_ name: String, _ value: String) {
+                guard !value.isEmpty else { return }
+                append("--\(boundary)\r\n")
+                append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n")
+                append(value); append("\r\n")
+            }
+            field("from", draft.from)
+            field("to", draft.to.joined(separator: ","))
+            field("cc", draft.cc.joined(separator: ","))
+            field("bcc", draft.bcc.joined(separator: ","))
+            field("subject", draft.subject)
+            field("body", draft.body)
+            field("slug", draft.slug)
+            append("--\(boundary)\r\n")
+            append("Content-Disposition: form-data; name=\"file\"; filename=\"\(draft.attachmentName)\"\r\n")
+            append("Content-Type: image/png\r\n\r\n")
+            body.append(png); append("\r\n")
+            append("--\(boundary)--\r\n")
+            req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+            req.httpBody = body
+        } else {
+            // JSON.
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            let payload: [String: Any] = [
+                "from": draft.from, "to": draft.to, "cc": draft.cc, "bcc": draft.bcc,
+                "subject": draft.subject, "body": draft.body, "slug": draft.slug,
+            ]
+            req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+        }
+
+        let data: Data, resp: URLResponse
+        do { (data, resp) = try await session.data(for: req) }
+        catch { throw MailError.transport(error) }
+
+        guard let http = resp as? HTTPURLResponse else { throw MailError.invalidResponse }
+        guard (200..<300).contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw MailError.http(status: http.statusCode, body: body)
+        }
+    }
+}

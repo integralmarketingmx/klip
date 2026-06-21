@@ -6,6 +6,7 @@ final class SnapController {
     private let manager: ClipboardManager
     private var overlay: CaptureOverlayController?
     private var editor: SnapEditorController?
+    private var preview: CapturePreviewController?
     private var inProgress = false
 
     /// Se invoca tras añadir una captura al historial (para revelar el panel: el item "vuela" a Klip).
@@ -73,10 +74,31 @@ final class SnapController {
         let overlay = CaptureOverlayController(shot: shot) { [weak self] image in
             self?.overlay = nil
             guard let self, let image else { return }
-            self.openEditor(with: image)
+            self.presentPreview(image)
         }
         self.overlay = overlay
         overlay.present()
+    }
+
+    /// Miniatura flotante tras seleccionar la región: clic → editar; ignorar (~6 s) → solo guardar en
+    /// Klip. La imagen se copia al portapapeles de inmediato (la miniatura muestra "✓ Copiado").
+    @MainActor
+    private func presentPreview(_ image: NSImage) {
+        manager.copyCapturedToClipboard(image)
+        let preview = CapturePreviewController(
+            image: image,
+            onEdit: { [weak self] img in
+                self?.preview = nil
+                self?.openEditor(with: img)
+            },
+            onSaveOnly: { [weak self] img in
+                self?.preview = nil
+                guard let self else { return }
+                _ = self.manager.addAnnotatedScreenshot(img, copyToClipboard: false)   // ya copiada
+                self.onCaptured?()
+            })
+        self.preview = preview
+        preview.show()
     }
 
     @MainActor

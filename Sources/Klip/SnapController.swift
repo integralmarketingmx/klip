@@ -10,6 +10,8 @@ final class SnapController {
 
     /// Se invoca tras añadir una captura al historial (para revelar el panel: el item "vuela" a Klip).
     var onCaptured: (() -> Void)?
+    /// Lo inyecta AppDelegate: enviar por email la captura anotada desde el editor (abre el compositor).
+    var onRequestEmail: ((NSImage) -> Void)?
 
     init(manager: ClipboardManager) {
         self.manager = manager
@@ -61,6 +63,7 @@ final class SnapController {
             self.manager.addAnnotatedScreenshot(result, copyToClipboard: true)
             self.onCaptured?()
         }
+        if let onRequestEmail { editor.onSendEmail = onRequestEmail }
         self.editor = editor
         editor.present()
     }

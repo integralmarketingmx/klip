@@ -17,6 +17,7 @@ extension PanelController {
             guard let self, let result else { return }   // nil = cerrado sin guardar
             self.manager.addAnnotatedScreenshot(result, copyToClipboard: true)
         }
+        editor.onSendEmail = { [weak self] image in self?.composeEmailWithImage(image) }
         snapEditor = editor            // retiene el editor mientras la ventana está abierta
         editor.present()
     }

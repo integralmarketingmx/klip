@@ -36,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panelController.onOpenPreferences = { [weak self] in self?.openPreferences() }
         snapController = SnapController(manager: manager)
         snapController.onCaptured = { [weak self] in self?.panelController.show() }
+        snapController.onRequestEmail = { [weak self] image in self?.panelController.composeEmailWithImage(image) }
         panelController.onCaptureAnnotate = { [weak self] in self?.snapController.start() }
         manager.start()
         // Si "reemplazar ⌘⇧4" está activo: re-asegura el atajo del sistema desactivado y re-afirma ⌘⇧4

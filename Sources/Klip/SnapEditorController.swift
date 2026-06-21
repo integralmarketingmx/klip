@@ -6,6 +6,13 @@ final class SnapEditorController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private let canvas: AnnotationCanvasView
     private let onFinish: (NSImage?) -> Void
+    /// Si está cableado, muestra el botón "Email" en la toolbar: aplana la captura anotada y la entrega
+    /// al compositor de email. Lo inyectan PanelController (anotar imagen del historial) y SnapController
+    /// (captura nueva). Si es nil, el botón no aparece.
+    var onSendEmail: ((NSImage) -> Void)?
+    private var emojiPopover: NSPopover?
+    /// Emojis frecuentes del picker (mismos que el editor anterior).
+    private let emojis = ["😀","👍","🔥","✅","❌","⭐️","➡️","❤️","⚠️","👀","🎯","💡"]
     private var toolButtons: [SnapTool: NSButton] = [:]
     private var colorButtons: [NSButton] = []
     private var colorIndex = 0
@@ -127,11 +134,30 @@ final class SnapEditorController: NSObject, NSWindowDelegate {
             leading.addArrangedSubview(b)
         }
 
+        leading.addArrangedSubview(separator())
+
+        // Emoji: popover con emojis frecuentes; al elegir uno se coloca (movible/redimensionable).
+        let emoji = makeActionButton(symbol: "face.smiling", tip: "Insertar emoji", action: #selector(emojiTapped(_:)))
+        emoji.translatesAutoresizingMaskIntoConstraints = false
+        emoji.widthAnchor.constraint(equalToConstant: size).isActive = true
+        leading.addArrangedSubview(emoji)
+
         let undo = makeActionButton(symbol: "arrow.uturn.backward", tip: "Deshacer (⌘Z)", action: #selector(undoTapped))
         undo.keyEquivalent = "z"; undo.keyEquivalentModifierMask = [.command]
         undo.translatesAutoresizingMaskIntoConstraints = false
         undo.widthAnchor.constraint(equalToConstant: size).isActive = true
         leading.addArrangedSubview(undo)
+
+        let redo = makeActionButton(symbol: "arrow.uturn.forward", tip: "Rehacer (⌘⇧Z)", action: #selector(redoTapped))
+        redo.keyEquivalent = "z"; redo.keyEquivalentModifierMask = [.command, .shift]
+        redo.translatesAutoresizingMaskIntoConstraints = false
+        redo.widthAnchor.constraint(equalToConstant: size).isActive = true
+        leading.addArrangedSubview(redo)
+
+        let clear = makeActionButton(symbol: "trash", tip: "Limpiar todo (deshacer con ⌘Z)", action: #selector(clearTapped))
+        clear.translatesAutoresizingMaskIntoConstraints = false
+        clear.widthAnchor.constraint(equalToConstant: size).isActive = true
+        leading.addArrangedSubview(clear)
 
         // Grupo derecho: copiar + guardar + cerrar.
         let trailing = NSStackView()
@@ -150,6 +176,13 @@ final class SnapEditorController: NSObject, NSWindowDelegate {
         close.widthAnchor.constraint(equalToConstant: size).isActive = true
         trailing.addArrangedSubview(copy)
         trailing.addArrangedSubview(save)
+        // Email: solo si el llamador cableó onSendEmail (aplana y abre el compositor).
+        if onSendEmail != nil {
+            let email = makeActionButton(symbol: "envelope", tip: "Enviar por email la captura anotada", action: #selector(emailTapped))
+            email.translatesAutoresizingMaskIntoConstraints = false
+            email.widthAnchor.constraint(equalToConstant: size).isActive = true
+            trailing.addArrangedSubview(email)
+        }
         trailing.addArrangedSubview(close)
 
         bar.addSubview(leading)
@@ -321,8 +354,69 @@ final class SnapEditorController: NSObject, NSWindowDelegate {
     @objc private func textLarger() { canvas.bumpFontSize(+4) }
 
     @objc private func undoTapped() { canvas.undo() }
+    @objc private func redoTapped() { canvas.redo() }
+    @objc private func clearTapped() { canvas.clearAll() }
+
+    @objc private func emojiTapped(_ sender: NSButton) {
+        // Reusa un único popover; si ya está visible, lo cierra (toggle).
+        if let pop = emojiPopover, pop.isShown { pop.close(); return }
+        let pop = NSPopover()
+        pop.behavior = .transient
+        pop.contentViewController = makeEmojiPicker()
+        pop.show(relativeTo: sender.bounds, of: sender, preferredEdge: .maxY)
+        emojiPopover = pop
+    }
+
+    private func makeEmojiPicker() -> NSViewController {
+        let cols = 6, cell: CGFloat = 34, pad: CGFloat = 10
+        let rows = Int(ceil(Double(emojis.count) / Double(cols)))
+        let grid = NSGridView()
+        grid.translatesAutoresizingMaskIntoConstraints = false
+        grid.rowSpacing = 4; grid.columnSpacing = 4
+        var row: [NSView] = []
+        for (i, e) in emojis.enumerated() {
+            let b = NSButton(title: e, target: self, action: #selector(emojiPicked(_:)))
+            b.isBordered = false
+            b.font = .systemFont(ofSize: 22)
+            b.toolTip = e
+            row.append(b)
+            if row.count == cols || i == emojis.count - 1 {
+                while row.count < cols { row.append(NSView()) }
+                grid.addRow(with: row); row = []
+            }
+        }
+        let container = NSView(frame: NSRect(x: 0, y: 0,
+                                             width: CGFloat(cols) * cell + pad * 2,
+                                             height: CGFloat(rows) * cell + pad * 2))
+        container.addSubview(grid)
+        NSLayoutConstraint.activate([
+            grid.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: pad),
+            grid.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -pad),
+            grid.topAnchor.constraint(equalTo: container.topAnchor, constant: pad),
+            grid.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -pad)
+        ])
+        let vc = NSViewController()
+        vc.view = container
+        return vc
+    }
+
+    @objc private func emojiPicked(_ sender: NSButton) {
+        canvas.insertEmoji(sender.title)
+        selectTool(.text)            // pasa a la herramienta de texto para poder mover/redimensionar el emoji
+        emojiPopover?.close()
+    }
+
+    @objc private func emailTapped() {
+        guard let onSendEmail else { return }
+        let image = canvas.flattened()
+        finish(with: nil)            // cierra el editor sin reinsertar en historial (lo hará el email)
+        onSendEmail(image)
+    }
 
     @objc private func copyTapped() {
+        // Si hay un texto/emoji seleccionado, ⌘C copia SOLO ese texto al portapapeles (no cierra el
+        // editor); si no hay selección de texto, copia la imagen anotada completa y cierra.
+        if canvas.copySelectedText() { return }
         let image = canvas.flattened()
         finish(with: image)
     }

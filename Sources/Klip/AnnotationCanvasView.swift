@@ -5,7 +5,7 @@ import AppKit
 /// reeditar y cambiar tamaño. Aplana todo a imagen a resolución completa.
 final class AnnotationCanvasView: NSView {
     private let baseImage: NSImage
-    private(set) var annotations: [Annotation] = []
+    var annotations: [Annotation] = []        // internal: lo mutan también las acciones de +Klip
     private var draft: Annotation?
 
     // Texto in-place / selección.
@@ -13,9 +13,14 @@ final class AnnotationCanvasView: NSView {
     private var editingID: UUID?              // anotación de texto que se está reeditando
     private var editFontSize: CGFloat = 20
     private var editColor: NSColor = .systemRed
-    private(set) var selectedTextID: UUID?    // texto seleccionado (caja resaltada)
+    var selectedTextID: UUID?                 // texto seleccionado (caja resaltada); lo toca también +Klip
     private var movingTextID: UUID?           // texto que se está arrastrando
     private var moveOffset = CGSize.zero
+
+    // Re-portado del editor anterior (Fase C del merge Snap): historial de rehacer y respaldo del
+    // último "Limpiar todo". Son internal para que AnnotationCanvasView+Klip.swift los maneje.
+    var redoStack: [Annotation] = []          // para Rehacer (⌘⇧Z)
+    var clearedBackup: [Annotation]?          // respaldo del último "Limpiar todo" (deshacer con ⌘Z)
 
     var currentTool: SnapTool = .arrow
     var currentColor: NSColor = .systemRed
@@ -123,6 +128,7 @@ final class AnnotationCanvasView: NSView {
         guard let d = draft else { return }
         if d.points.count > 1 || d.tool == .pencil || d.tool == .marker {
             annotations.append(d)
+            redoStack.removeAll(); clearedBackup = nil   // una acción nueva invalida rehacer/limpiar
         }
         draft = nil
         needsDisplay = true
@@ -159,7 +165,7 @@ final class AnnotationCanvasView: NSView {
 
     @objc private func textFieldCommitted(_ sender: NSTextField) { commitActiveText() }
 
-    private func commitActiveText() {
+    func commitActiveText() {   // internal: lo invoca también AnnotationCanvasView+Klip (clearAll)
         guard let field = activeTextField else { return }
         let text = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let frame = field.frame
@@ -179,6 +185,7 @@ final class AnnotationCanvasView: NSView {
                              points: [origin], text: text, fontSize: editFontSize)
         if let id { ann.id = id }   // conserva la identidad al reeditar
         annotations.append(ann)
+        redoStack.removeAll(); clearedBackup = nil   // una acción nueva invalida rehacer/limpiar
         selectedTextID = ann.id
         onSelectionChange?()
         needsDisplay = true
@@ -234,8 +241,17 @@ final class AnnotationCanvasView: NSView {
             needsDisplay = true
             return
         }
+        // Deshacer un "Limpiar todo": si lo último fue limpiar (lienzo vacío con respaldo), lo restaura
+        // entero antes de seguir deshaciendo anotaciones sueltas.
+        if annotations.isEmpty, let backup = clearedBackup {
+            annotations = backup
+            clearedBackup = nil
+            selectedTextID = nil
+            needsDisplay = true
+            return
+        }
         guard !annotations.isEmpty else { return }
-        annotations.removeLast()
+        redoStack.append(annotations.removeLast())   // permite rehacer (⌘⇧Z)
         selectedTextID = nil
         needsDisplay = true
     }

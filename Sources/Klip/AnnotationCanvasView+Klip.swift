@@ -79,6 +79,90 @@ extension AnnotationCanvasView {
 
     @objc func paste(_ sender: Any?) { pasteText() }
 
+    // MARK: - Mover / borrar la selección con teclado
+
+    /// Borra el texto/emoji seleccionado (⌫/Supr). Lo empuja a redoStack para poder rehacerlo.
+    func deleteSelection() {
+        guard let id = selectedTextID, let idx = annotations.firstIndex(where: { $0.id == id }) else { return }
+        redoStack.append(annotations.remove(at: idx))
+        clearedBackup = nil
+        selectedTextID = nil
+        onSelectionChange?()
+        needsDisplay = true
+    }
+
+    /// Desplaza el texto/emoji seleccionado. En coordenadas no-flipped (origen abajo-izq), dy>0 sube.
+    func moveSelection(dx: CGFloat, dy: CGFloat) {
+        guard let id = selectedTextID, let idx = annotations.firstIndex(where: { $0.id == id }) else { return }
+        let o = annotations[idx].start
+        annotations[idx].points = [CGPoint(x: o.x + dx, y: o.y + dy)]
+        needsDisplay = true
+    }
+
+    override func keyDown(with event: NSEvent) {
+        // Durante la edición de texto el NSTextField es first responder, así que esto no interfiere.
+        let step: CGFloat = event.modifierFlags.contains(.shift) ? 10 : 1
+        switch event.keyCode {
+        case 51, 117:                                       // ⌫ borrar / supr
+            if selectedTextID != nil { deleteSelection(); return }
+        case 123: if selectedTextID != nil { moveSelection(dx: -step, dy: 0); return }   // ←
+        case 124: if selectedTextID != nil { moveSelection(dx:  step, dy: 0); return }   // →
+        case 125: if selectedTextID != nil { moveSelection(dx: 0, dy: -step); return }   // ↓ (no-flipped: baja)
+        case 126: if selectedTextID != nil { moveSelection(dx: 0, dy:  step); return }   // ↑ (no-flipped: sube)
+        default: break
+        }
+        super.keyDown(with: event)
+    }
+
+    // MARK: - Menú contextual (clic derecho)
+
+    /// Copia la imagen anotada completa al portapapeles SIN cerrar el editor (para el menú contextual).
+    func copyImageToPasteboard() {
+        let img = flattened()
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.writeObjects([img])
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        menu.addItem(withTitle: "Copiar", action: #selector(ctxCopy), keyEquivalent: "c")
+        let undoIt = menu.addItem(withTitle: "Deshacer", action: #selector(ctxUndo), keyEquivalent: "z")
+        undoIt.isEnabled = !annotations.isEmpty || clearedBackup != nil
+        let redoIt = menu.addItem(withTitle: "Rehacer", action: #selector(ctxRedo), keyEquivalent: "Z")
+        redoIt.isEnabled = !redoStack.isEmpty
+        if selectedTextID != nil {
+            menu.addItem(withTitle: "Borrar selección", action: #selector(ctxDelete), keyEquivalent: "\u{8}")
+        }
+        menu.addItem(.separator())
+        let toolsItem = menu.addItem(withTitle: "Herramienta", action: nil, keyEquivalent: "")
+        let sub = NSMenu()
+        sub.autoenablesItems = false
+        for t in SnapTool.allCases {
+            let it = sub.addItem(withTitle: t.tooltip, action: #selector(ctxTool(_:)), keyEquivalent: "")
+            it.representedObject = t.rawValue
+            it.target = self
+            it.state = (t == currentTool) ? .on : .off
+        }
+        toolsItem.submenu = sub
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Limpiar todo", action: #selector(ctxClear), keyEquivalent: "")
+        for item in menu.items where item.action != nil { item.target = self }
+        return menu
+    }
+
+    @objc private func ctxCopy()  { copyImageToPasteboard() }
+    @objc private func ctxUndo()  { undo() }
+    @objc private func ctxRedo()  { redo() }
+    @objc private func ctxDelete(){ deleteSelection() }
+    @objc private func ctxClear() { clearAll() }
+    @objc private func ctxTool(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let t = SnapTool(rawValue: raw) else { return }
+        currentTool = t
+        onToolPick?(t)
+    }
+
     // En una app de barra de menú sin menú Edit, ⌘V no llega solo a paste(_:). Lo enrutamos a mano.
     // (⌘C/⌘Z/⌘⇧Z los capturan los botones de la toolbar a nivel de ventana antes que la vista.)
     override func performKeyEquivalent(with event: NSEvent) -> Bool {

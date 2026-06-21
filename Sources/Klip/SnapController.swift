@@ -44,6 +44,30 @@ final class SnapController {
         }
     }
 
+    /// Captura de PANTALLA COMPLETA: captura el display bajo el cursor y abre el editor directamente,
+    /// SIN el overlay de selección de región (re-portado del menú "Pantalla completa" pre-Snap).
+    func startFullScreen() {
+        guard !inProgress else { return }
+        guard ScreenCapturer.hasPermission() else { promptForPermission(); return }
+
+        inProgress = true
+        let mouse = NSEvent.mouseLocation
+        Task { @MainActor in
+            do {
+                let shot = try await ScreenCapturer.captureDisplay(containing: mouse)
+                self.inProgress = false
+                let image = NSImage(cgImage: shot.cgImage, size: shot.screen.frame.size)
+                self.openEditor(with: image)
+            } catch CaptureError.noPermission {
+                self.inProgress = false
+                self.promptForPermission()
+            } catch {
+                self.inProgress = false
+                NSSound.beep()
+            }
+        }
+    }
+
     @MainActor
     private func presentOverlay(_ shot: DisplayShot) {
         let overlay = CaptureOverlayController(shot: shot) { [weak self] image in

@@ -119,6 +119,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Captura + anotación (editor Snap unificado).
         menu.addItem(withTitle: "\(L10n.t("menu.capture"))   \(Settings.shared.captureCombo.displayString)",
                      action: #selector(startCapture), keyEquivalent: "")
+        // Captura de pantalla completa directa (sin selección de región): abre el editor con todo el display.
+        menu.addItem(withTitle: L10n.t("capture.full"), action: #selector(startCaptureFull), keyEquivalent: "")
         menu.addItem(.separator())
         let recents = NSMenuItem(title: L10n.t("menu.recents"), action: nil, keyEquivalent: "")
         recentsMenu.delegate = self
@@ -307,6 +309,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func showPanel() { panelController.show() }
     @objc private func startVoice() { panelController.toggleVoiceRecording() }
     @objc private func startCapture() { snapController.start() }
+    @objc private func startCaptureFull() { snapController.startFullScreen() }
     @objc private func showGuideMenu() { panelController.showGuide() }
 
     @objc private func openPreferences() {

@@ -70,6 +70,8 @@ final class SnapEditorController: NSObject, NSWindowDelegate {
         selectTool(.arrow)
         // Al seleccionar/deseleccionar un texto, reflejar su color en la paleta de la toolbar.
         canvas.onSelectionChange = { [weak self] in self?.syncColorSelectionFromCanvas() }
+        // El menú contextual del lienzo cambia de herramienta: reflejarlo en los botones de la toolbar.
+        canvas.onToolPick = { [weak self] tool in self?.selectTool(tool) }
         self.window = win
     }
 

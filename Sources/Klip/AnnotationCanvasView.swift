@@ -29,6 +29,8 @@ final class AnnotationCanvasView: NSView {
 
     /// Notifica cambios de selección (para que la toolbar refleje el tamaño del texto elegido).
     var onSelectionChange: (() -> Void)?
+    /// El menú contextual avisa a la toolbar qué herramienta se eligió (para resaltar el botón).
+    var onToolPick: ((SnapTool) -> Void)?
 
     init(image: NSImage) {
         self.baseImage = image

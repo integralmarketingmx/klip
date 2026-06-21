@@ -21,6 +21,10 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     /// Lo inyecta AppDelegate para abrir Preferencias desde el panel (estado sin API key).
     var onOpenPreferences: (() -> Void)?
+    /// Lo inyecta AppDelegate: dispara la captura+anotación (arquitectura Snap de Martin).
+    var onCaptureAnnotate: (() -> Void)?
+    /// Retiene el editor Snap mientras se anota una imagen existente del historial.
+    var snapEditor: SnapEditorController?
 
     private var keyMonitor: Any?
     private var localClickMonitor: Any?
@@ -87,7 +91,7 @@ final class PanelController: NSObject, NSWindowDelegate {
             onRetryTranscription: { [weak self] item in self?.retryTranscription(item) },
             onSaveAsFile: { [weak self] item in self?.saveTextAsFile(item) },
             onCopyAsCode: { [weak self] item in self?.copyAsCode(of: item) },
-            onCaptureAnnotate: { [weak self] in self?.captureAndAnnotate(fullScreen: false) },
+            onCaptureAnnotate: { [weak self] in self?.onCaptureAnnotate?() },
             onCombinePDF: { [weak self] items in self?.combineSelectedToPDF(items) },
             onExportZip: { [weak self] items in self?.exportSelectedZip(items) },
             onAssignCollection: { [weak self] items in self?.assignSelectedToCollection(items) }

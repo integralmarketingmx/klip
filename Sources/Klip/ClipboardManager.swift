@@ -185,7 +185,7 @@ final class ClipboardManager: ObservableObject, ClipboardStoring {
             }
             return nil
         }
-        let size = image.size
+        let size = image.pixelDimensions   // píxeles reales (no puntos): badge consistente en Retina
         let preview = "Captura · \(Int(size.width))×\(Int(size.height))"
         let item = ClipboardItem(kind: .image, imageFileName: fileName, preview: preview)
         items.insert(item, at: 0)
@@ -230,6 +230,9 @@ final class ClipboardManager: ObservableObject, ClipboardStoring {
         guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
         items[idx].text = nil
         items[idx].preview = Self.voiceTranscribing
+        // Re-registrar el guard de portapapeles: si no, un reintento exitoso nunca se auto-pegaría
+        // (removeValue daría nil → canPaste=false). El auto-pegado de reintentos quedaba muerto.
+        voicePasteGuards[id] = NSPasteboard.general.changeCount
         storage.saveItems(items)
     }
 
@@ -238,18 +241,14 @@ final class ClipboardManager: ObservableObject, ClipboardStoring {
     func finishVoiceNote(id: UUID, text: String) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let canPaste = voicePasteGuards.removeValue(forKey: id).map { $0 == NSPasteboard.general.changeCount } ?? false
-        guard items.contains(where: { $0.id == id }) else {
-            if !clean.isEmpty, canPaste { setClipboardText(clean) }   // el placeholder ya no existe: no perder el texto
-            return
-        }
+        // Si ya no existe antes del trim, el usuario la borró (o se reemplazó al importar): no tocar
+        // su portapapeles con la transcripción de una nota que eliminó a propósito (core-7 de Martin).
+        guard items.contains(where: { $0.id == id }) else { return }
         // Recorta PRIMERO, mientras la nota sigue marcada como "transcribiendo" y por tanto
         // protegida del trim. Si cambiáramos el preview antes, una transcripción recién llegada
         // podría perderse al recortar (deja de estar protegida). Tras el trim re-localizamos por id.
         trimAndSave()
-        guard let idx = items.firstIndex(where: { $0.id == id }) else {
-            if !clean.isEmpty, canPaste { setClipboardText(clean) }
-            return
-        }
+        guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
         items[idx].text = clean.isEmpty ? nil : clean
         items[idx].preview = clean.isEmpty ? Self.voiceFailed : Self.voicePreview(clean)
         let item = items[idx]
@@ -418,7 +417,6 @@ final class ClipboardManager: ObservableObject, ClipboardStoring {
 
     // MARK: - Captura anotada y colecciones (vibe coders)
 
-    /// Añade una imagen (captura anotada) al historial como un elemento de imagen.
     /// Copia una captura recién tomada al portapapeles SIN agregarla aún al historial, para que el
     /// usuario pueda pegarla de inmediato (⌘V) sin tocar la miniatura. Suprime la re-captura del
     /// monitor: si luego ignora la miniatura, `addCapturedImage` la guarda una sola vez.
@@ -428,6 +426,7 @@ final class ClipboardManager: ObservableObject, ClipboardStoring {
         lastChangeCount = pb.changeCount
     }
 
+    /// Añade una imagen (captura recién tomada) al historial como un elemento de imagen.
     func addCapturedImage(_ image: NSImage, name: String? = nil) {
         let fileName = "\(UUID().uuidString).png"
         // Si el guardado falla, no insertamos el item (evita referencia huérfana en el historial).

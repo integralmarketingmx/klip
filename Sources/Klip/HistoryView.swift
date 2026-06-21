@@ -13,7 +13,7 @@ enum HistoryFilter: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .all: "square.grid.2x2"; case .text: "doc.text"; case .image: "photo"
-        case .voice: "waveform"; case .credential: "key.fill"; case .pinned: "pin.fill"
+        case .voice: "waveform"; case .credential: "key.fill"; case .pinned: "star.fill"
         }
     }
 }
@@ -81,6 +81,14 @@ struct HistoryView: View {
         }
     }
 
+    /// Solo los filtros que tienen elementos ahora mismo (más "Todo"): un usuario que solo copió texto
+    /// no ve chips vacíos de Imagen/Voz/Credencial que parecen "no funcionar".
+    private var availableFilters: [HistoryFilter] {
+        HistoryFilter.allCases.filter { f in
+            f == .all || manager.items.contains { matches($0, f) }
+        }
+    }
+
     private var filtered: [ClipboardItem] {
         var base = sortedItems.filter { matches($0, filter) }
         if let cf = collectionFilter { base = base.filter { $0.collection == cf } }
@@ -126,6 +134,9 @@ struct HistoryView: View {
             // Si la colección filtrada dejó de existir (se borró/renombró su último elemento), soltar el
             // filtro: si no, la lista quedaría falsamente vacía sin chip visible para limpiarlo.
             if let cf = collectionFilter, !manager.collections.contains(cf) { collectionFilter = nil }
+            // Si el tipo filtrado ya no tiene elementos, su chip desaparece: volver a "Todo" para no
+            // quedar con una lista vacía y ningún chip seleccionado visible.
+            if !availableFilters.contains(filter) { filter = .all }
             // Quitar del lote los ids que ya no existen (p. ej. auto-recorte por maxItems al entrar clips
             // nuevos): mantiene el contador "N sel." sincronizado con lo que realmente se exportará.
             if !selectedBatch.isEmpty {
@@ -219,7 +230,7 @@ struct HistoryView: View {
     private var filterRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
-                ForEach(HistoryFilter.allCases) { f in
+                ForEach(availableFilters) { f in
                     chip(L10n.t(f.labelKey), icon: f.icon, selected: filter == f && collectionFilter == nil) {
                         filter = f; collectionFilter = nil
                     }
@@ -486,7 +497,7 @@ struct ItemRow: View {
     private var displayedPreview: String {
         // El ojo alterna enmascarado/real (item.preview siempre está enmascarado para credenciales).
         if isCredential, let t = item.text { return revealed ? t : CredentialDetector.masked(t) }
-        return item.preview.isEmpty ? "(vacío)" : item.preview
+        return item.preview.isEmpty ? L10n.t("item.empty") : item.preview
     }
 
     var body: some View {
@@ -555,7 +566,7 @@ struct ItemRow: View {
         .padding(8)
     }
 
-    private var pinDot: some View { Image(systemName: "pin.fill").foregroundStyle(.orange).font(.system(size: 10)) }
+    private var pinDot: some View { Image(systemName: "star.fill").foregroundStyle(.orange).font(.system(size: 10)) }
 
     @ViewBuilder private var thumbnail: some View {
         if isCredential {
@@ -636,11 +647,13 @@ struct ItemRow: View {
                 iconButton("key.slash", L10n.t("row.unmarkcred")) { manager.toggleCredential(item) }
             } else {
                 iconButton("doc.on.doc", L10n.t("row.copy")) { onPick(item) }
+                // Copiar como bloque de código (``` ```): acción primaria del perfil vibe coder
+                // (pegar snippets en chats de IA), antes enterrada en el menú ⋯.
+                iconButton("chevron.left.forwardslash.chevron.right", L10n.t("row.code")) { onCopyAsCode(item) }
                 if let u = linkURL {
                     iconButton("arrow.up.right.square", L10n.t("row.openlink")) { NSWorkspace.shared.open(u) }
                 }
                 Menu {
-                    Button { onCopyAsCode(item) } label: { Label(L10n.t("row.code"), systemImage: "chevron.left.forwardslash.chevron.right") }
                     Button { onCopyMarkdown(item) } label: { Label(L10n.t("row.markdown"), systemImage: "doc.richtext") }
                     Button { onSaveAsFile(item) } label: { Label(L10n.t("row.savefile"), systemImage: "square.and.arrow.down") }
                     Divider()
@@ -648,8 +661,8 @@ struct ItemRow: View {
                 } label: { Image(systemName: "ellipsis.circle").font(.system(size: 12)) }
                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help(L10n.t("act.more"))
             }
-            iconButton("pencil", L10n.t("row.rename")) { onRename(item) }
-            iconButton(item.pinned ? "pin.slash" : "pin", L10n.t(item.pinned ? "row.unpin" : "row.pin")) {
+            iconButton("tag", L10n.t("row.rename")) { onRename(item) }
+            iconButton(item.pinned ? "star.fill" : "star", L10n.t(item.pinned ? "row.unpin" : "row.pin")) {
                 manager.togglePin(item)
             }
             iconButton("trash", L10n.t("row.delete")) { manager.delete(item) }

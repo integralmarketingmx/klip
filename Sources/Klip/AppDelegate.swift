@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }()
     private let manager = ClipboardManager()
     private var panelController: PanelController!
+    private var snapController: SnapController!   // captura + editor Snap (arquitectura de Martin)
     private var hotKey: HotKey?
     private var voiceHotKey: HotKey?
     private var captureHotKey: HotKey?
@@ -33,6 +34,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         buildMenu()
         panelController = PanelController(manager: manager, statusItem: statusItem)
         panelController.onOpenPreferences = { [weak self] in self?.openPreferences() }
+        snapController = SnapController(manager: manager)
+        snapController.onCaptured = { [weak self] in self?.panelController.show() }
+        panelController.onCaptureAnnotate = { [weak self] in self?.snapController.start() }
         manager.start()
         // Si "reemplazar ⌘⇧4" está activo: re-asegura el atajo del sistema desactivado y re-afirma ⌘⇧4
         // como combo de Klip (por si un fallback previo lo revirtió a ⌘⇧2).
@@ -111,12 +115,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                      action: #selector(showPanel), keyEquivalent: "")
         menu.addItem(withTitle: "\(L10n.t("rec.record"))   \(Settings.shared.voiceCombo.displayString)",
                      action: #selector(startVoice), keyEquivalent: "")
-        // Captura + anotación (editor unificado: base del jefe + mejoras de Mike).
-        menu.addItem(withTitle: "\(L10n.t("capture.annotate"))   \(Settings.shared.captureCombo.displayString)",
-                     action: #selector(captureAnnotate), keyEquivalent: "")
-        menu.addItem(withTitle: L10n.t("capture.full"), action: #selector(captureAnnotateFull), keyEquivalent: "")
+        // Captura + anotación (editor Snap unificado).
+        menu.addItem(withTitle: "\(L10n.t("menu.capture"))   \(Settings.shared.captureCombo.displayString)",
+                     action: #selector(startCapture), keyEquivalent: "")
         menu.addItem(.separator())
-        let recents = NSMenuItem(title: "Recientes", action: nil, keyEquivalent: "")
+        let recents = NSMenuItem(title: L10n.t("menu.recents"), action: nil, keyEquivalent: "")
         recentsMenu.delegate = self
         recents.submenu = recentsMenu
         menu.addItem(recents)
@@ -168,7 +171,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     private func makeCaptureHotKey(_ c: KeyCombo) {
         captureHotKey = HotKey(keyCode: c.keyCode, modifiers: c.carbonModifiers, id: 3) { [weak self] in
-            self?.panelController.captureAndAnnotate(fullScreen: false)
+            self?.snapController.start()
         }
     }
 
@@ -208,6 +211,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if captureHotKey == nil, Settings.shared.captureCombo != .defaultCaptureCombo,
            !Settings.shared.overrideSystemCapture {
             Settings.shared.captureCombo = .defaultCaptureCombo; lastGoodCaptureCombo = .defaultCaptureCombo; makeCaptureHotKey(.defaultCaptureCombo)
+        }
+        // Si incluso el atajo de captura por defecto (⌘⇧U) colisiona (p. ej. otra app ya lo tomó),
+        // probar las combinaciones sugeridas para no dejar la captura inerte sin que el usuario lo sepa.
+        if captureHotKey == nil {
+            for s in KeyCombo.suggestions where s != Settings.shared.combo && s != Settings.shared.voiceCombo {
+                makeCaptureHotKey(s)
+                if captureHotKey != nil {
+                    Settings.shared.captureCombo = s; lastGoodCaptureCombo = s
+                    showAlert(L10n.t("hotkey.capture.changed.title"), L10n.t("hotkey.capture.changed.info"))
+                    break
+                }
+            }
         }
     }
 
@@ -252,7 +267,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.removeAllItems()
         let items = manager.items.sorted { $0.createdAt > $1.createdAt }.prefix(10)
         if items.isEmpty {
-            let empty = NSMenuItem(title: "Sin elementos", action: nil, keyEquivalent: "")
+            let empty = NSMenuItem(title: L10n.t("menu.empty"), action: nil, keyEquivalent: "")
             empty.isEnabled = false
             menu.addItem(empty)
             return
@@ -290,8 +305,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func showPanel() { panelController.show() }
     @objc private func startVoice() { panelController.toggleVoiceRecording() }
-    @objc private func captureAnnotate() { panelController.captureAndAnnotate(fullScreen: false) }
-    @objc private func captureAnnotateFull() { panelController.captureAndAnnotate(fullScreen: true) }
+    @objc private func startCapture() { snapController.start() }
     @objc private func showGuideMenu() { panelController.showGuide() }
 
     @objc private func openPreferences() {
@@ -312,7 +326,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .failure(let err):
             if case .requiresApproval = err { LoginItem.shared.openSystemSettings() }
             let alert = NSAlert()
-            alert.messageText = "Inicio automático"
+            alert.messageText = L10n.t("login.title")
             alert.informativeText = err.localizedDescription
             alert.runModal()
             launchItem?.state = LoginItem.shared.isEnabledOrPending ? .on : .off

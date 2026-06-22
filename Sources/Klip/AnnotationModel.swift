@@ -54,6 +54,17 @@ struct Annotation {
         return CGRect(x: o.x, y: o.y, width: size.width, height: size.height)
     }
 
+    /// Rectángulo de selección/hit-testing para CUALQUIER herramienta (texto o forma). Para formas es
+    /// el bounding box de sus puntos, holgado por el grosor del trazo para que sea fácil de tocar.
+    func selectionBounds() -> CGRect? {
+        if tool == .text { return textBounds() }
+        guard let first = points.first else { return nil }
+        var minX = first.x, minY = first.y, maxX = first.x, maxY = first.y
+        for p in points { minX = min(minX, p.x); minY = min(minY, p.y); maxX = max(maxX, p.x); maxY = max(maxY, p.y) }
+        let grip = (tool == .marker ? max(lineWidth * 4, 14) : lineWidth) / 2 + 6
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY).insetBy(dx: -grip, dy: -grip)
+    }
+
     /// Dibuja la anotación en el contexto actual (coordenadas de la vista, no flipped).
     func draw() {
         color.set()

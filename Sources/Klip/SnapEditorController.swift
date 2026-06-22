@@ -31,29 +31,43 @@ final class SnapEditorController: NSObject, NSWindowDelegate {
 
     func present() {
         let imgSize = canvas.bounds.size
-        let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
+        // Siempre en el monitor PRINCIPAL (aunque la captura venga de otro monitor).
+        let screen = NSScreen.main ?? NSScreen.screens.first
+        let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 800)
         let minBarWidth: CGFloat = 780   // ancho mínimo para que la toolbar no se encime
-        let maxW = screen.width * 0.9, maxH = screen.height * 0.85 - 52
-        let scale = min(1, min(maxW / imgSize.width, maxH / imgSize.height))
-        let contentW = max(minBarWidth, imgSize.width * scale)
-        let contentH = imgSize.height * scale + 52   // 52 = barra de herramientas
+        let toolbarH: CGFloat = 52
+        let titleBarH: CGFloat = 28      // alto de la barra de título de la ventana
+
+        // REGLA: el usuario NUNCA hace scroll. La imagen se escala (solo zoom OUT) para caber entera
+        // dentro del monitor principal; el lienzo conserva su resolución nativa vía magnificación del
+        // scroll view (las anotaciones y el aplanado siguen a resolución completa).
+        let availW = visible.width * 0.96
+        let availH = visible.height - toolbarH - titleBarH
+        let scale = min(1, min(availW / imgSize.width, availH / imgSize.height))
+        let viewW = imgSize.width * scale
+        let viewH = imgSize.height * scale
+        let contentW = max(minBarWidth, viewW)
+        let contentH = viewH + toolbarH
 
         let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: contentW, height: contentH),
                            styleMask: [.titled, .closable], backing: .buffered, defer: false)
         win.title = L10n.t("win.editor")
-        win.minSize = NSSize(width: minBarWidth, height: 240)
         win.isReleasedWhenClosed = false
         win.delegate = self
-        win.center()
 
         let content = NSView(frame: NSRect(x: 0, y: 0, width: contentW, height: contentH))
 
-        // Lienzo dentro de un scroll view (por si la captura es grande).
-        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: contentW, height: contentH - 52))
+        // Lienzo dentro de un scroll view con MAGNIFICACIÓN fija = scale (zoom out). El documento queda
+        // exactamente del tamaño del área visible → nunca hay barras de scroll.
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: contentW, height: contentH - toolbarH))
         scroll.autoresizingMask = [.width, .height]
-        scroll.hasVerticalScroller = true
-        scroll.hasHorizontalScroller = true
+        scroll.hasVerticalScroller = false
+        scroll.hasHorizontalScroller = false
+        scroll.allowsMagnification = true
+        scroll.minMagnification = scale
+        scroll.maxMagnification = scale
         scroll.documentView = canvas
+        scroll.magnification = scale
         scroll.backgroundColor = .underPageBackgroundColor
         content.addSubview(scroll)
 
@@ -63,6 +77,10 @@ final class SnapEditorController: NSObject, NSWindowDelegate {
         content.addSubview(toolbar)
 
         win.contentView = content
+        // Centrar SIEMPRE en el monitor principal (win.frame incluye la barra de título).
+        let wf = win.frame
+        win.setFrameOrigin(NSPoint(x: visible.minX + (visible.width - wf.width) / 2,
+                                   y: visible.minY + (visible.height - wf.height) / 2))
         win.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         win.makeFirstResponder(canvas)
@@ -168,11 +186,12 @@ final class SnapEditorController: NSObject, NSWindowDelegate {
         trailing.alignment = .centerY
         trailing.translatesAutoresizingMaskIntoConstraints = false
 
-        let copy = makeTextButton(title: "Copiar", tip: "Copiar (⌘C)", action: #selector(copyTapped))
+        // "Copiar" SOLO copia la imagen anotada al portapapeles (no cierra, no guarda en Klip).
+        let copy = makeTextButton(title: "Copiar", tip: "Copiar la imagen al portapapeles (⌘C)", action: #selector(copyTapped))
         copy.keyEquivalent = "c"; copy.keyEquivalentModifierMask = [.command]
-        let save = makeTextButton(title: "Guardar", tip: "Guardar (⌘S)", action: #selector(saveTapped))
+        let save = makeTextButton(title: "Guardar", tip: "Guardar como archivo (⌘S)", action: #selector(saveTapped))
         save.keyEquivalent = "s"; save.keyEquivalentModifierMask = [.command]
-        let close = makeActionButton(symbol: "xmark", tip: "Cerrar (Esc)", action: #selector(closeTapped))
+        let close = makeActionButton(symbol: "xmark", tip: "Cerrar sin guardar (Esc)", action: #selector(closeTapped))
         close.keyEquivalent = "\u{1b}"   // Esc
         close.translatesAutoresizingMaskIntoConstraints = false
         close.widthAnchor.constraint(equalToConstant: size).isActive = true
@@ -185,6 +204,14 @@ final class SnapEditorController: NSObject, NSWindowDelegate {
             email.widthAnchor.constraint(equalToConstant: size).isActive = true
             trailing.addArrangedSubview(email)
         }
+        // "Añadir a Klip" (prominente): copia + guarda en el historial + CIERRA la ventana. Es la acción
+        // terminal con la que el usuario avanza sabiendo que ya quedó guardado en Klip. ⌘↩ / Enter.
+        let addKlip = makeTextButton(title: "Añadir a Klip", tip: "Copiar y guardar en Klip, y cerrar (⌘↩)", action: #selector(addToKlipTapped))
+        addKlip.bezelStyle = .rounded
+        // ⌘↩ (no Enter pelón): así no choca con el Enter que confirma el texto que se está escribiendo.
+        addKlip.keyEquivalent = "\r"; addKlip.keyEquivalentModifierMask = [.command]
+        addKlip.bezelColor = .controlAccentColor
+        trailing.addArrangedSubview(addKlip)
         trailing.addArrangedSubview(close)
 
         bar.addSubview(leading)
@@ -416,9 +443,13 @@ final class SnapEditorController: NSObject, NSWindowDelegate {
     }
 
     @objc private func copyTapped() {
-        // Si hay un texto/emoji seleccionado, ⌘C copia SOLO ese texto al portapapeles (no cierra el
-        // editor); si no hay selección de texto, copia la imagen anotada completa y cierra.
-        if canvas.copySelectedText() { return }
+        // "Copiar" SIEMPRE copia la imagen anotada completa al portapapeles, sin cerrar el editor.
+        canvas.copyImageToPasteboard()
+    }
+
+    /// Acción terminal: copia + guarda en el historial de Klip + cierra. onFinish(image) hace que el
+    /// llamador (SnapController/PanelController) lo añada al historial con copyToClipboard:true.
+    @objc private func addToKlipTapped() {
         let image = canvas.flattened()
         finish(with: image)
     }

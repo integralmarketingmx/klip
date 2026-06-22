@@ -16,7 +16,7 @@ extension AnnotationCanvasView {
     func redo() {
         guard !redoStack.isEmpty else { return }
         annotations.append(redoStack.removeLast())
-        selectedTextID = nil
+        selectedID = nil
         needsDisplay = true
     }
 
@@ -26,7 +26,7 @@ extension AnnotationCanvasView {
         clearedBackup = annotations.isEmpty ? nil : annotations
         redoStack.removeAll()
         annotations.removeAll()
-        selectedTextID = nil
+        selectedID = nil
         needsDisplay = true
     }
 
@@ -40,7 +40,7 @@ extension AnnotationCanvasView {
         if currentFontSize < 28 { ann.fontSize = 28 }
         annotations.append(ann)
         redoStack.removeAll(); clearedBackup = nil
-        selectedTextID = ann.id
+        selectedID = ann.id
         onSelectionChange?()
         needsDisplay = true
     }
@@ -56,7 +56,7 @@ extension AnnotationCanvasView {
     /// Si no hay selección de texto, devuelve false para que la toolbar copie la imagen completa.
     @discardableResult
     func copySelectedText() -> Bool {
-        guard let id = selectedTextID,
+        guard let id = selectedID,
               let a = annotations.first(where: { $0.id == id }),
               let txt = a.text, !txt.isEmpty else { return false }
         let pb = NSPasteboard.general
@@ -70,7 +70,7 @@ extension AnnotationCanvasView {
     func pasteText() {
         guard let s = NSPasteboard.general.string(forType: .string),
               !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        if let id = selectedTextID, let a = annotations.first(where: { $0.id == id }) {
+        if let id = selectedID, let a = annotations.first(where: { $0.id == id }) {
             addText(s, at: CGPoint(x: a.start.x + 16, y: a.start.y + 16))
         } else {
             addText(s, at: CGPoint(x: bounds.midX, y: bounds.midY))
@@ -83,19 +83,19 @@ extension AnnotationCanvasView {
 
     /// Borra el texto/emoji seleccionado (⌫/Supr). Lo empuja a redoStack para poder rehacerlo.
     func deleteSelection() {
-        guard let id = selectedTextID, let idx = annotations.firstIndex(where: { $0.id == id }) else { return }
+        guard let id = selectedID, let idx = annotations.firstIndex(where: { $0.id == id }) else { return }
         redoStack.append(annotations.remove(at: idx))
         clearedBackup = nil
-        selectedTextID = nil
+        selectedID = nil
         onSelectionChange?()
         needsDisplay = true
     }
 
-    /// Desplaza el texto/emoji seleccionado. En coordenadas no-flipped (origen abajo-izq), dy>0 sube.
+    /// Desplaza la anotación seleccionada (texto, emoji o forma). En coordenadas no-flipped (origen
+    /// abajo-izq), dy>0 sube. Mueve TODOS los puntos para no colapsar formas de 2+ puntos.
     func moveSelection(dx: CGFloat, dy: CGFloat) {
-        guard let id = selectedTextID, let idx = annotations.firstIndex(where: { $0.id == id }) else { return }
-        let o = annotations[idx].start
-        annotations[idx].points = [CGPoint(x: o.x + dx, y: o.y + dy)]
+        guard let id = selectedID, let idx = annotations.firstIndex(where: { $0.id == id }) else { return }
+        annotations[idx].points = annotations[idx].points.map { CGPoint(x: $0.x + dx, y: $0.y + dy) }
         needsDisplay = true
     }
 
@@ -104,11 +104,11 @@ extension AnnotationCanvasView {
         let step: CGFloat = event.modifierFlags.contains(.shift) ? 10 : 1
         switch event.keyCode {
         case 51, 117:                                       // ⌫ borrar / supr
-            if selectedTextID != nil { deleteSelection(); return }
-        case 123: if selectedTextID != nil { moveSelection(dx: -step, dy: 0); return }   // ←
-        case 124: if selectedTextID != nil { moveSelection(dx:  step, dy: 0); return }   // →
-        case 125: if selectedTextID != nil { moveSelection(dx: 0, dy: -step); return }   // ↓ (no-flipped: baja)
-        case 126: if selectedTextID != nil { moveSelection(dx: 0, dy:  step); return }   // ↑ (no-flipped: sube)
+            if selectedID != nil { deleteSelection(); return }
+        case 123: if selectedID != nil { moveSelection(dx: -step, dy: 0); return }   // ←
+        case 124: if selectedID != nil { moveSelection(dx:  step, dy: 0); return }   // →
+        case 125: if selectedID != nil { moveSelection(dx: 0, dy: -step); return }   // ↓ (no-flipped: baja)
+        case 126: if selectedID != nil { moveSelection(dx: 0, dy:  step); return }   // ↑ (no-flipped: sube)
         default: break
         }
         super.keyDown(with: event)
@@ -132,7 +132,7 @@ extension AnnotationCanvasView {
         undoIt.isEnabled = !annotations.isEmpty || clearedBackup != nil
         let redoIt = menu.addItem(withTitle: "Rehacer", action: #selector(ctxRedo), keyEquivalent: "Z")
         redoIt.isEnabled = !redoStack.isEmpty
-        if selectedTextID != nil {
+        if selectedID != nil {
             menu.addItem(withTitle: "Borrar selección", action: #selector(ctxDelete), keyEquivalent: "\u{8}")
         }
         menu.addItem(.separator())

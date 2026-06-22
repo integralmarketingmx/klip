@@ -26,9 +26,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            let cfg = NSImage.SymbolConfiguration(pointSize: 16, weight: .regular)
-            button.image = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "Klip")?
-                .withSymbolConfiguration(cfg)
+            // Símbolo de plantilla SIN forzar pointSize: la barra de menú lo dimensiona a su altura con
+            // el padding correcto. Forzar 16pt lo hacía demasiado alto y se recortaba arriba/abajo.
+            let img = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "Klip")
+            img?.isTemplate = true
+            button.image = img
         }
         installMainMenu()
         buildMenu()

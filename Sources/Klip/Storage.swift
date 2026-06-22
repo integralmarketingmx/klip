@@ -172,6 +172,12 @@ final class Storage: PersistentStoring {
            let png = rep.representation(using: .png, properties: [:]) {
             return png
         }
+        // Imagen respaldada por CGImage (p. ej. captura sin editar): codificar directo desde el CGImage
+        // preserva su color space/perfil ICC (Display P3) — evita el lavado del round-trip por TIFF.
+        if let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
+           let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) {
+            return png
+        }
         guard let tiff = image.tiffRepresentation,
               let rep = NSBitmapImageRep(data: tiff) else { return nil }
         return rep.representation(using: .png, properties: [:])

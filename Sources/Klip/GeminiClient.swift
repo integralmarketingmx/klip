@@ -108,7 +108,7 @@ enum AIProvider {
     static func transcribe(audioURL: URL, language: String?, model: String, vocabulary: String = "") async throws -> String {
         if selected == "local" {
             // On-device (WhisperKit): no audio leaves the Mac. `model` is the on-device model name.
-            return try await LocalTranscriber.shared.transcribe(audioURL: audioURL, model: model, language: language)
+            return try await LocalTranscriber.shared.transcribe(audioURL: audioURL, model: model, language: language, vocabulary: vocabulary)
         }
         if selected == "gemini", GeminiClient.shared.hasAPIKey {
             return try await GeminiClient.shared.transcribe(audioURL: audioURL, language: language, model: model, vocabulary: vocabulary)

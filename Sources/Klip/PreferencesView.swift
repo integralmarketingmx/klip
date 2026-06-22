@@ -183,14 +183,12 @@ struct PreferencesView: View {
                     Text(L10n.t("lang.auto")).tag("")
                     ForEach(dictationLanguages, id: \.code) { Text($0.name).tag($0.code) }
                 }
-                if settings.aiProvider != "local" {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(L10n.t("prefs.vocab.label")).font(.subheadline)
-                        TextField(L10n.t("prefs.vocab.placeholder"), text: $settings.transcriptionVocabulary, axis: .vertical)
-                            .lineLimit(2...4)
-                            .textFieldStyle(.roundedBorder)
-                        Text(L10n.t("prefs.vocab.info")).font(.caption).foregroundStyle(.secondary)
-                    }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(L10n.t("prefs.vocab.label")).font(.subheadline)
+                    TextField(L10n.t("prefs.vocab.placeholder"), text: $settings.transcriptionVocabulary, axis: .vertical)
+                        .lineLimit(2...4)
+                        .textFieldStyle(.roundedBorder)
+                    Text(L10n.t("prefs.vocab.info")).font(.caption).foregroundStyle(.secondary)
                 }
                 Text(settings.aiProvider == "local" ? L10n.t("prefs.local.info")
                      : settings.aiProvider == "gemini" ? L10n.t("prefs.voice.useGemini")

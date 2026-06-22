@@ -5,7 +5,8 @@ let package = Package(
     name: "Klip",
     platforms: [.macOS(.v14)],
     dependencies: [
-        .package(url: "https://github.com/argmaxinc/WhisperKit", from: "0.9.0")
+        // Pinned to 0.18.x: WhisperKit is pre-1.0, so any 0.x bump can break the API. Bump deliberately.
+        .package(url: "https://github.com/argmaxinc/WhisperKit", .upToNextMinor(from: "0.18.0"))
     ],
     targets: [
         .executableTarget(

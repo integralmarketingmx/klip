@@ -166,6 +166,11 @@ struct PreferencesView: View {
                     Text("Gemini").tag("gemini")
                 }
                 .pickerStyle(.segmented)
+                // Explain the choice right under the picker: which option is free/offline vs. needs a key.
+                Text(settings.aiProvider == "local" ? L10n.t("prefs.local.info")
+                     : settings.aiProvider == "gemini" ? L10n.t("prefs.voice.useGemini")
+                     : L10n.t("prefs.voice.useOpenAI"))
+                    .font(.caption).foregroundStyle(.secondary)
                 if settings.aiProvider == "local" {
                     Picker(L10n.t("prefs.local.model"), selection: $settings.localModel) {
                         ForEach(LocalTranscriber.models, id: \.id) { Text("\($0.label) — \($0.note)").tag($0.id) }
@@ -190,10 +195,6 @@ struct PreferencesView: View {
                         .textFieldStyle(.roundedBorder)
                     Text(L10n.t("prefs.vocab.info")).font(.caption).foregroundStyle(.secondary)
                 }
-                Text(settings.aiProvider == "local" ? L10n.t("prefs.local.info")
-                     : settings.aiProvider == "gemini" ? L10n.t("prefs.voice.useGemini")
-                     : L10n.t("prefs.voice.useOpenAI"))
-                    .font(.caption).foregroundStyle(.secondary)
             }
 
             if settings.aiProvider == "openai" {

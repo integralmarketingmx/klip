@@ -23,6 +23,23 @@ actor LocalTranscriber {
     ]
     static let defaultModel = "base"
 
+    /// Loads (and, if needed, downloads) the configured model ahead of time so the first voice note isn't
+    /// stuck waiting. Best-effort: called on launch when the on-device provider is active.
+    func prewarm(model: String) async {
+        _ = try? await pipeline(for: model.isEmpty ? Self.defaultModel : model)
+    }
+
+    /// Whether the model is already on disk (so the next transcription won't trigger a first-use download).
+    /// Used to show a distinct "Downloading model…" state instead of the generic "Transcribing…".
+    nonisolated static func isModelReady(_ model: String) -> Bool {
+        let id = model.isEmpty ? defaultModel : model
+        guard let base = try? FileManager.default.url(for: .documentDirectory, in: .userDomainMask,
+                                                       appropriateFor: nil, create: false) else { return false }
+        let dir = base.appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml")
+        guard let entries = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return false }
+        return entries.contains { $0.contains(id) }   // e.g. "openai_whisper-base", "…large-v3_turbo…"
+    }
+
     /// Transcribes an audio file fully on-device. `model` is a WhisperKit model name (see `models`).
     /// `vocabulary` (context words/names) biases recognition via Whisper prompt tokens.
     /// Public entry: serializes decodes on the shared pipeline (see `serialTail`).

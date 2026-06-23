@@ -53,6 +53,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         recorder.onVoiceNoteTranscribed = { [weak self] id, text in self?.manager.finishVoiceNote(id: id, text: text) }
         recorder.onVoiceNoteFailed = { [weak self] id in self?.manager.failVoiceNote(id: id) }
         recorder.onVoiceNoteRetrying = { [weak self] id in self?.manager.markVoiceNoteTranscribing(id: id) }
+        recorder.onVoiceNoteDownloadingModel = { [weak self] id in self?.manager.markVoiceNoteDownloadingModel(id: id) }
 
         let root = HistoryView(
             manager: manager,

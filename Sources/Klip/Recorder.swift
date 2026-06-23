@@ -32,6 +32,8 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     var onVoiceNoteFailed: ((UUID) -> Void)?
     /// Retry: marks an existing item as "Transcribiendo…" again.
     var onVoiceNoteRetrying: ((UUID) -> Void)?
+    /// First on-device use: the model is downloading, so show a distinct status instead of "Transcribing…".
+    var onVoiceNoteDownloadingModel: ((UUID) -> Void)?
 
     // Silence detection (timer at 0.1 s): warn at 2 min, stop at 3 min.
     private var silentTicks = 0
@@ -248,16 +250,17 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         transcribingCount += 1
         // Resolve the active provider's model here, on the MainActor (avoids reading Settings.shared
         // from the transcription thread). Gemini and OpenAI each have their own model setting.
-        // Resolve the EFFECTIVE provider + its model here, on the MainActor (one snapshot — avoids both a
-        // data race reading Settings.shared off-thread and a provider/model TOCTOU). A Gemini selection
-        // with no Gemini key falls back to OpenAI, so resolve that here too.
-        let selected = Settings.shared.aiProvider
-        let provider = (selected == "gemini" && !GeminiClient.shared.hasAPIKey) ? "openai" : selected
+        // Resolve the provider + its model here, on the MainActor (one snapshot — avoids both a data race
+        // reading Settings.shared off-thread and a provider/model TOCTOU). Each provider uses its own key,
+        // so no cross-provider fallback (recording is already gated on AIProvider.hasKey for the selection).
+        let provider = Settings.shared.aiProvider
         let model = provider == "gemini" ? Settings.shared.geminiModel
                   : provider == "local"  ? Settings.shared.localModel
                   : Settings.shared.transcriptionModel
         let language = Settings.shared.transcriptionLanguage
         let vocabulary = Settings.shared.transcriptionVocabulary
+        // First on-device use downloads the model: show "Downloading model…" so it doesn't look stuck.
+        if provider == "local", !LocalTranscriber.isModelReady(model), let id { onVoiceNoteDownloadingModel?(id) }
         Task { @MainActor in
             defer { transcribingCount -= 1 }
             do {

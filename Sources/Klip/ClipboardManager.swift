@@ -230,6 +230,15 @@ final class ClipboardManager: ObservableObject {
         storage.saveItems(items)
     }
 
+    static var voiceDownloading: String { "🎙 " + L10n.t("voice.downloading") }
+
+    /// First on-device use: the model is still downloading. Show that instead of the generic "Transcribing…".
+    func markVoiceNoteDownloadingModel(id: UUID) {
+        guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
+        items[idx].preview = Self.voiceDownloading
+        storage.saveItems(items)
+    }
+
     /// Fills in the transcription. Only leaves it on the pasteboard if the user did NOT copy something else
     /// while it was transcribing (avoids clobbering their pasteboard in the background).
     func finishVoiceNote(id: UUID, text: String) {

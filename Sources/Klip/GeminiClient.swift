@@ -109,12 +109,13 @@ final class GeminiClient {
 enum AIProvider {
     static var selected: String { Settings.shared.aiProvider }
 
-    /// Is the selected provider ready? Local (on-device) needs no key; cloud needs an API key
-    /// (Gemini falls back to OpenAI if it has no key of its own).
+    /// Is the selected provider ready? Local (on-device) needs no key; each cloud provider needs ITS OWN
+    /// key (no cross-provider fallback — picking Gemini and having only an OpenAI key must not silently
+    /// send your audio to OpenAI; the UI shows exactly the selected provider's key section).
     static var hasKey: Bool {
         switch selected {
         case "local":  return true
-        case "gemini": return GeminiClient.shared.hasAPIKey || OpenAIClient.shared.hasAPIKey
+        case "gemini": return GeminiClient.shared.hasAPIKey
         default:       return OpenAIClient.shared.hasAPIKey
         }
     }

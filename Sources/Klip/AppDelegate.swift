@@ -39,6 +39,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         manager.start()
         setupHotKeys()
         maybeEnableLoginOnce()
+        // On-device is the default: pre-load (and, if first run, download) the model now so the first
+        // voice note transcribes immediately instead of waiting on a cold model load/download.
+        if Settings.shared.aiProvider == "local" {
+            let m = Settings.shared.localModel
+            Task.detached(priority: .utility) { await LocalTranscriber.shared.prewarm(model: m) }
+        }
         Settings.shared.$uiLanguage.dropFirst().sink { [weak self] _ in self?.buildMenu() }.store(in: &cancellables)
     }
 

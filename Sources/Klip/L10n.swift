@@ -226,7 +226,7 @@ enum L10n {
         "guide.howto.copy": "Copia texto o imágenes con normalidad: aparecen en el historial.",
         "guide.howto.paste": "Pulsa %@ y haz clic (o Enter) para volver a pegar algo.",
         "guide.howto.creds": "Las contraseñas/tokens se detectan y guardan aparte, enmascarados (filtro 🔑).",
-        "guide.howto.voice": "Graba notas de voz y se transcriben a texto con OpenAI.",
+        "guide.howto.voice": "Graba notas de voz y se transcriben a texto en tu Mac (en el dispositivo, sin configurar); o cambia a OpenAI/Gemini en Preferencias.",
         "import.busy.title": "Espera a que terminen las transcripciones",
         "import.busy.info": "Hay notas de voz transcribiéndose. Importar ahora podría perderlas. Inténtalo de nuevo cuando terminen.",
         "perm.mic.title": "Klip necesita permiso de Micrófono",
@@ -241,7 +241,8 @@ enum L10n {
         "autopaste.denied.title": "Conceder Accesibilidad",
         "autopaste.denied.info": "Klip abrió Ajustes del Sistema. Activa Klip en Privacidad y seguridad › Accesibilidad para que pueda pegar automáticamente (puede aplicar en el próximo pegado).",
         "sel.count": "%d sel.",
-        "ocr.label": "OCR:"
+        "ocr.label": "OCR:",
+        "voice.downloading": "Descargando modelo (primer uso)…"
     ]
 
     private static let en: [String: String] = [
@@ -451,7 +452,7 @@ enum L10n {
         "guide.howto.copy": "Copy text or images as usual: they show up in the history.",
         "guide.howto.paste": "Press %@ and click (or Enter) to paste something again.",
         "guide.howto.creds": "Passwords/tokens are detected and stored separately, masked (🔑 filter).",
-        "guide.howto.voice": "Record voice notes and they're transcribed to text with OpenAI.",
+        "guide.howto.voice": "Record voice notes and they're transcribed to text on your Mac (on-device, no setup); or switch to OpenAI/Gemini in Preferences.",
         "import.busy.title": "Wait for transcriptions to finish",
         "import.busy.info": "Some voice notes are still transcribing. Importing now could lose them. Try again once they finish.",
         "perm.mic.title": "Klip needs Microphone permission",
@@ -466,7 +467,8 @@ enum L10n {
         "autopaste.denied.title": "Grant Accessibility",
         "autopaste.denied.info": "Klip opened System Settings. Enable Klip under Privacy & Security › Accessibility, then it can auto-paste (it may take effect on the next paste).",
         "sel.count": "%d sel.",
-        "ocr.label": "OCR:"
+        "ocr.label": "OCR:",
+        "voice.downloading": "Downloading model (first use)…"
     ]
 
     // The translations below (fr/de/it/pt/zh/ja) are filled in by the translation flow; any
@@ -679,7 +681,7 @@ enum L10n {
         "guide.howto.copy": "Copiez du texte ou des images comme d'habitude : ils apparaissent dans l'historique.",
         "guide.howto.paste": "Appuyez sur %@ et cliquez (ou Entrée) pour coller de nouveau quelque chose.",
         "guide.howto.creds": "Les mots de passe/jetons sont détectés et stockés à part, masqués (filtre 🔑).",
-        "guide.howto.voice": "Enregistrez des notes vocales et elles sont transcrites en texte avec OpenAI.",
+        "guide.howto.voice": "Enregistre des notes vocales, transcrites en texte sur ton Mac (sur l'appareil, sans configuration) ; ou passe à OpenAI/Gemini dans les Préférences.",
         "import.busy.title": "Attends la fin des transcriptions",
         "import.busy.info": "Des notes vocales sont encore en cours de transcription. Importer maintenant pourrait les perdre. Réessaie une fois terminées.",
         "perm.mic.title": "Klip a besoin de l'autorisation Microphone",
@@ -694,7 +696,8 @@ enum L10n {
         "autopaste.denied.title": "Autoriser l'accessibilité",
         "autopaste.denied.info": "Klip a ouvert les Réglages Système. Active Klip dans Confidentialité et sécurité › Accessibilité pour le collage automatique (effet au prochain collage).",
         "sel.count": "%d sél.",
-        "ocr.label": "OCR :"
+        "ocr.label": "OCR :",
+        "voice.downloading": "Téléchargement du modèle (première utilisation)…"
     ]
 
     private static let de: [String: String] = [
@@ -905,7 +908,7 @@ enum L10n {
         "guide.howto.copy": "Kopiere Text oder Bilder wie gewohnt: Sie erscheinen im Verlauf.",
         "guide.howto.paste": "Drücke %@ und klicke (oder Enter), um etwas erneut einzufügen.",
         "guide.howto.creds": "Passwörter/Tokens werden erkannt und separat gespeichert, maskiert (🔑-Filter).",
-        "guide.howto.voice": "Nimm Sprachnotizen auf, und sie werden mit OpenAI in Text transkribiert.",
+        "guide.howto.voice": "Nimm Sprachnotizen auf; sie werden auf deinem Mac in Text umgewandelt (auf dem Gerät, ohne Einrichtung); oder wechsle in den Einstellungen zu OpenAI/Gemini.",
         "import.busy.title": "Warte, bis die Transkriptionen fertig sind",
         "import.busy.info": "Einige Sprachnotizen werden noch transkribiert. Ein Import jetzt könnte sie verlieren. Versuche es erneut, wenn sie fertig sind.",
         "perm.mic.title": "Klip benötigt die Mikrofon-Berechtigung",
@@ -920,7 +923,8 @@ enum L10n {
         "autopaste.denied.title": "Bedienungshilfen erlauben",
         "autopaste.denied.info": "Klip hat die Systemeinstellungen geöffnet. Aktiviere Klip unter Datenschutz & Sicherheit › Bedienungshilfen, damit es automatisch einfügen kann (wirkt beim nächsten Einfügen).",
         "sel.count": "%d ausgew.",
-        "ocr.label": "OCR:"
+        "ocr.label": "OCR:",
+        "voice.downloading": "Modell wird geladen (erste Nutzung)…"
     ]
 
     private static let it: [String: String] = [
@@ -1131,7 +1135,7 @@ enum L10n {
         "guide.howto.copy": "Copia testo o immagini come al solito: appaiono nella cronologia.",
         "guide.howto.paste": "Premi %@ e fai clic (o Invio) per incollare di nuovo qualcosa.",
         "guide.howto.creds": "Le password/i token vengono rilevati e salvati a parte, mascherati (filtro 🔑).",
-        "guide.howto.voice": "Registra note vocali e vengono trascritte in testo con OpenAI.",
+        "guide.howto.voice": "Registra note vocali, trascritte in testo sul tuo Mac (sul dispositivo, senza configurazione); oppure passa a OpenAI/Gemini nelle Preferenze.",
         "import.busy.title": "Attendi la fine delle trascrizioni",
         "import.busy.info": "Alcune note vocali si stanno ancora trascrivendo. Importare ora potrebbe perderle. Riprova quando hanno finito.",
         "perm.mic.title": "Klip ha bisogno dell'autorizzazione Microfono",
@@ -1146,7 +1150,8 @@ enum L10n {
         "autopaste.denied.title": "Concedi Accessibilità",
         "autopaste.denied.info": "Klip ha aperto Impostazioni di Sistema. Abilita Klip in Privacy e sicurezza › Accessibilità per l'incolla automatico (effetto al prossimo incolla).",
         "sel.count": "%d sel.",
-        "ocr.label": "OCR:"
+        "ocr.label": "OCR:",
+        "voice.downloading": "Download del modello (primo utilizzo)…"
     ]
 
     private static let pt: [String: String] = [
@@ -1357,7 +1362,7 @@ enum L10n {
         "guide.howto.copy": "Copia texto ou imagens como de costume: aparecem no histórico.",
         "guide.howto.paste": "Prime %@ e clica (ou Enter) para colar algo novamente.",
         "guide.howto.creds": "As palavras-passe/tokens são detetados e guardados à parte, mascarados (filtro 🔑).",
-        "guide.howto.voice": "Grava notas de voz e são transcritas para texto com OpenAI.",
+        "guide.howto.voice": "Grava notas de voz, transcritas em texto no teu Mac (no dispositivo, sem configuração); ou muda para OpenAI/Gemini nas Preferências.",
         "import.busy.title": "Aguarda o fim das transcrições",
         "import.busy.info": "Algumas notas de voz ainda estão a ser transcritas. Importar agora pode perdê-las. Tenta de novo quando terminarem.",
         "perm.mic.title": "O Klip precisa de permissão de Microfone",
@@ -1372,7 +1377,8 @@ enum L10n {
         "autopaste.denied.title": "Conceder Acessibilidade",
         "autopaste.denied.info": "O Klip abriu as Definições do Sistema. Ativa o Klip em Privacidade e Segurança › Acessibilidade para colar automaticamente (efeito na próxima colagem).",
         "sel.count": "%d sel.",
-        "ocr.label": "OCR:"
+        "ocr.label": "OCR:",
+        "voice.downloading": "A descarregar o modelo (primeira utilização)…"
     ]
 
     private static let zh: [String: String] = [
@@ -1583,7 +1589,7 @@ enum L10n {
         "guide.howto.copy": "像往常一样复制文本或图片：它们会出现在历史记录中。",
         "guide.howto.paste": "按 %@ 并点击（或回车）以再次粘贴某项内容。",
         "guide.howto.creds": "密码/令牌会被检测并单独保存，以掩码形式显示（🔑 筛选）。",
-        "guide.howto.voice": "录制语音备忘录，它们会通过 OpenAI 转写为文本。",
+        "guide.howto.voice": "录制语音笔记，在你的 Mac 上（设备端，无需设置）转写为文字；也可在偏好设置中切换到 OpenAI/Gemini。",
         "import.busy.title": "请等待转写完成",
         "import.busy.info": "部分语音笔记仍在转写中。现在导入可能会丢失它们。请在完成后重试。",
         "perm.mic.title": "Klip 需要麦克风权限",
@@ -1598,7 +1604,8 @@ enum L10n {
         "autopaste.denied.title": "授予辅助功能权限",
         "autopaste.denied.info": "Klip 已打开系统设置。请在隐私与安全性 › 辅助功能中启用 Klip，即可自动粘贴（下次粘贴生效）。",
         "sel.count": "已选 %d",
-        "ocr.label": "OCR："
+        "ocr.label": "OCR：",
+        "voice.downloading": "正在下载模型（首次使用）…"
     ]
 
     private static let ja: [String: String] = [
@@ -1809,7 +1816,7 @@ enum L10n {
         "guide.howto.copy": "テキストや画像をいつも通りコピーすると、履歴に表示されます。",
         "guide.howto.paste": "%@ を押してクリック(またはEnter)すると、もう一度ペーストできます。",
         "guide.howto.creds": "パスワードやトークンは検出され、マスクして別に保存されます(🔑 フィルタ)。",
-        "guide.howto.voice": "音声メモを録音すると、OpenAIでテキストに文字起こしされます。",
+        "guide.howto.voice": "音声メモを録音すると、Mac 上（オンデバイス・設定不要）でテキストに文字起こしされます。設定で OpenAI/Gemini に切り替えできます。",
         "import.busy.title": "文字起こしの完了をお待ちください",
         "import.busy.info": "一部の音声メモはまだ文字起こし中です。今インポートすると失われる可能性があります。完了後に再試行してください。",
         "perm.mic.title": "Klip にはマイクの許可が必要です",
@@ -1824,6 +1831,7 @@ enum L10n {
         "autopaste.denied.title": "アクセシビリティを許可",
         "autopaste.denied.info": "Klip がシステム設定を開きました。プライバシーとセキュリティ › アクセシビリティ で Klip を有効にすると自動ペーストできます（次回のペーストから有効）。",
         "sel.count": "%d 件選択",
-        "ocr.label": "OCR："
+        "ocr.label": "OCR：",
+        "voice.downloading": "モデルをダウンロード中（初回）…"
     ]
 }

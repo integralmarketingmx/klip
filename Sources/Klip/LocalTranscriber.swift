@@ -41,7 +41,7 @@ actor LocalTranscriber {
                                                        appropriateFor: nil, create: false) else { return false }
         let dir = base.appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml")
         guard let entries = try? FileManager.default.contentsOfDirectory(atPath: dir.path),
-              let folder = entries.first(where: { $0.contains(id) }) else { return false }
+              let folder = entries.first(where: { $0.hasPrefix("openai_whisper-\(id)") }) else { return false }
         // Require the actual weights: an interrupted download leaves only metadata (generation_config.json).
         let modelDir = dir.appendingPathComponent(folder)
         return ["AudioEncoder.mlmodelc", "TextDecoder.mlmodelc", "MelSpectrogram.mlmodelc"].allSatisfy {

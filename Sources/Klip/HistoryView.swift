@@ -276,7 +276,7 @@ struct HistoryView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 3) {
-                    ForEach(filtered) { item in
+                    ForEach(Array(filtered.enumerated()), id: \.element.id) { index, item in
                         ItemRow(item: item,
                                 isSelected: item.id == selection.selectedID,
                                 resetToken: selection.openToken,
@@ -287,7 +287,8 @@ struct HistoryView: View {
                                 onSaveAsFile: onSaveAsFile, onCopyAsCode: onCopyAsCode,
                                 searchTerm: search,
                                 selecting: selecting, isChecked: selectedBatch.contains(item.id),
-                                onToggleCheck: { toggleCheck(item.id) })
+                                onToggleCheck: { toggleCheck(item.id) },
+                                quickIndex: index < 9 ? index + 1 : nil)
                             .id(item.id)
                         if ocrResultID == item.id { ocrBox }
                     }
@@ -383,6 +384,7 @@ struct ItemRow: View {
     var selecting: Bool = false
     var isChecked: Bool = false
     var onToggleCheck: () -> Void = {}
+    var quickIndex: Int? = nil   // 1–9 for the first rows → shows the ⌘N quick-paste hint
 
     @State private var hovering = false
     @State private var revealed = false
@@ -448,6 +450,15 @@ struct ItemRow: View {
                 Image(systemName: isChecked ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 18)).foregroundStyle(isChecked ? Color.accentColor : .secondary)
                     .padding(.leading, 6)
+            } else {
+                // ⌘N quick-paste hint on the first 9 rows (a reserved slot keeps all rows aligned).
+                Group {
+                    if let n = quickIndex {
+                        Text("⌘\(n)").font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                    }
+                }
+                .frame(width: 20).padding(.leading, 6)
             }
             Group {
                 if item.kind == .image { imageCard } else { standardRow }

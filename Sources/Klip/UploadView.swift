@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 /// Window to upload audio files and transcribe them: drop zone + file picker.
 struct UploadView: View {
     @ObservedObject var recorder: Recorder
+    @ObservedObject var settings = Settings.shared   // re-localize live when the UI language changes
     var onChoose: () -> Void
     var onFiles: ([URL]) -> Void
     var onClose: () -> Void

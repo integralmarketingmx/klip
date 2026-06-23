@@ -236,7 +236,10 @@ enum L10n {
         "prefs.vocab.info": "Nombres, marcas o jerga que aparecen en tu audio. El transcriptor los usa para escribirlos bien.",
         "prefs.provider.local": "En el dispositivo",
         "prefs.local.model": "Modelo en el dispositivo",
-        "prefs.local.info": "El primer uso descarga el modelo. Luego funciona sin conexión — sin API key, y tu audio nunca sale de tu Mac."
+        "prefs.local.info": "El primer uso descarga el modelo. Luego funciona sin conexión — sin API key, y tu audio nunca sale de tu Mac.",
+        "editor.text.placeholder": "Escribe…",
+        "autopaste.denied.title": "Conceder Accesibilidad",
+        "autopaste.denied.info": "Klip abrió Ajustes del Sistema. Activa Klip en Privacidad y seguridad › Accesibilidad para que pueda pegar automáticamente (puede aplicar en el próximo pegado)."
     ]
 
     private static let en: [String: String] = [
@@ -456,7 +459,10 @@ enum L10n {
         "prefs.vocab.info": "Names, brands or jargon that appear in your audio. The transcriber uses them to spell them correctly.",
         "prefs.provider.local": "On-device",
         "prefs.local.model": "On-device model",
-        "prefs.local.info": "First use downloads the model. Then it runs fully offline — no API key, and your audio never leaves your Mac."
+        "prefs.local.info": "First use downloads the model. Then it runs fully offline — no API key, and your audio never leaves your Mac.",
+        "editor.text.placeholder": "Type…",
+        "autopaste.denied.title": "Grant Accessibility",
+        "autopaste.denied.info": "Klip opened System Settings. Enable Klip under Privacy & Security › Accessibility, then it can auto-paste (it may take effect on the next paste)."
     ]
 
     // The translations below (fr/de/it/pt/zh/ja) are filled in by the translation flow; any
@@ -679,7 +685,10 @@ enum L10n {
         "prefs.vocab.info": "Noms, marques ou jargon présents dans ton audio. Le transcripteur les utilise pour bien les écrire.",
         "prefs.provider.local": "Sur l'appareil",
         "prefs.local.model": "Modèle sur l'appareil",
-        "prefs.local.info": "La première utilisation télécharge le modèle. Ensuite tout est hors ligne — sans clé API, et ton audio ne quitte jamais ton Mac."
+        "prefs.local.info": "La première utilisation télécharge le modèle. Ensuite tout est hors ligne — sans clé API, et ton audio ne quitte jamais ton Mac.",
+        "editor.text.placeholder": "Saisir…",
+        "autopaste.denied.title": "Autoriser l'accessibilité",
+        "autopaste.denied.info": "Klip a ouvert les Réglages Système. Active Klip dans Confidentialité et sécurité › Accessibilité pour le collage automatique (effet au prochain collage)."
     ]
 
     private static let de: [String: String] = [
@@ -900,7 +909,10 @@ enum L10n {
         "prefs.vocab.info": "Namen, Marken oder Fachbegriffe in deinem Audio. Der Transkriptor nutzt sie für die richtige Schreibweise.",
         "prefs.provider.local": "Auf dem Gerät",
         "prefs.local.model": "Modell auf dem Gerät",
-        "prefs.local.info": "Bei der ersten Nutzung wird das Modell geladen. Danach läuft alles offline — ohne API-Key, und dein Audio verlässt nie deinen Mac."
+        "prefs.local.info": "Bei der ersten Nutzung wird das Modell geladen. Danach läuft alles offline — ohne API-Key, und dein Audio verlässt nie deinen Mac.",
+        "editor.text.placeholder": "Tippen…",
+        "autopaste.denied.title": "Bedienungshilfen erlauben",
+        "autopaste.denied.info": "Klip hat die Systemeinstellungen geöffnet. Aktiviere Klip unter Datenschutz & Sicherheit › Bedienungshilfen, damit es automatisch einfügen kann (wirkt beim nächsten Einfügen)."
     ]
 
     private static let it: [String: String] = [
@@ -1121,7 +1133,10 @@ enum L10n {
         "prefs.vocab.info": "Nomi, marchi o gergo presenti nel tuo audio. Il trascrittore li usa per scriverli correttamente.",
         "prefs.provider.local": "Sul dispositivo",
         "prefs.local.model": "Modello sul dispositivo",
-        "prefs.local.info": "Al primo utilizzo scarica il modello. Poi funziona offline — senza chiave API, e il tuo audio non lascia mai il Mac."
+        "prefs.local.info": "Al primo utilizzo scarica il modello. Poi funziona offline — senza chiave API, e il tuo audio non lascia mai il Mac.",
+        "editor.text.placeholder": "Scrivi…",
+        "autopaste.denied.title": "Concedi Accessibilità",
+        "autopaste.denied.info": "Klip ha aperto Impostazioni di Sistema. Abilita Klip in Privacy e sicurezza › Accessibilità per l'incolla automatico (effetto al prossimo incolla)."
     ]
 
     private static let pt: [String: String] = [
@@ -1342,7 +1357,10 @@ enum L10n {
         "prefs.vocab.info": "Nomes, marcas ou jargão que aparecem no teu áudio. O transcritor usa-os para os escrever corretamente.",
         "prefs.provider.local": "No dispositivo",
         "prefs.local.model": "Modelo no dispositivo",
-        "prefs.local.info": "A primeira utilização descarrega o modelo. Depois funciona offline — sem chave API, e o teu áudio nunca sai do Mac."
+        "prefs.local.info": "A primeira utilização descarrega o modelo. Depois funciona offline — sem chave API, e o teu áudio nunca sai do Mac.",
+        "editor.text.placeholder": "Escrever…",
+        "autopaste.denied.title": "Conceder Acessibilidade",
+        "autopaste.denied.info": "O Klip abriu as Definições do Sistema. Ativa o Klip em Privacidade e Segurança › Acessibilidade para colar automaticamente (efeito na próxima colagem)."
     ]
 
     private static let zh: [String: String] = [
@@ -1563,7 +1581,10 @@ enum L10n {
         "prefs.vocab.info": "你的音频中出现的名称、品牌或术语。转写器会用它们来正确拼写。",
         "prefs.provider.local": "本地设备",
         "prefs.local.model": "本地模型",
-        "prefs.local.info": "首次使用会下载模型。之后完全离线运行——无需 API 密钥，音频绝不离开你的 Mac。"
+        "prefs.local.info": "首次使用会下载模型。之后完全离线运行——无需 API 密钥，音频绝不离开你的 Mac。",
+        "editor.text.placeholder": "输入…",
+        "autopaste.denied.title": "授予辅助功能权限",
+        "autopaste.denied.info": "Klip 已打开系统设置。请在隐私与安全性 › 辅助功能中启用 Klip，即可自动粘贴（下次粘贴生效）。"
     ]
 
     private static let ja: [String: String] = [
@@ -1784,6 +1805,9 @@ enum L10n {
         "prefs.vocab.info": "音声に出てくる名前・ブランド・専門用語。文字起こしが正しく表記するために使います。",
         "prefs.provider.local": "デバイス内",
         "prefs.local.model": "デバイス内モデル",
-        "prefs.local.info": "初回はモデルをダウンロードします。以降は完全オフラインで動作—APIキー不要で、音声がMacから出ることはありません。"
+        "prefs.local.info": "初回はモデルをダウンロードします。以降は完全オフラインで動作—APIキー不要で、音声がMacから出ることはありません。",
+        "editor.text.placeholder": "入力…",
+        "autopaste.denied.title": "アクセシビリティを許可",
+        "autopaste.denied.info": "Klip がシステム設定を開きました。プライバシーとセキュリティ › アクセシビリティ で Klip を有効にすると自動ペーストできます（次回のペーストから有効）。"
     ]
 }

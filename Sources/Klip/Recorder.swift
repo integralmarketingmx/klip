@@ -262,6 +262,7 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 if trimmed.isEmpty { if let id { onVoiceNoteFailed?(id) } }
                 else { if let id { onVoiceNoteTranscribed?(id, trimmed) } }
             } catch {
+                NSLog("Klip: transcription failed — %@", String(describing: error))   // surface, don't fail silently
                 if let id { onVoiceNoteFailed?(id) }   // the audio stays in history to retry/recover
             }
         }

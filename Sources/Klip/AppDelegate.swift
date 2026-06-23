@@ -143,6 +143,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
             }
         }
+        // If the panel/voice shortcuts are still dead after the default-reset (another app globally owns
+        // even the default combo), tell the user instead of leaving a silently-inert shortcut.
+        if hotKey == nil || voiceHotKey == nil {
+            NSSound.beep(); showAlert(L10n.t("act.prefs"), L10n.t("hotkey.inuse"))
+        }
     }
 
     private func applyCaptureHotKey(_ combo: KeyCombo) {
@@ -175,8 +180,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func maybeEnableLoginOnce() {
         let key = "didAutoEnableLogin"
         guard !UserDefaults.standard.bool(forKey: key) else { return }
-        UserDefaults.standard.set(true, forKey: key)
         LoginItem.shared.registerIfNeeded()
+        // Mark "done" only once registration actually took. On first launch the app can be translocated
+        // (registration fails); leaving the flag unset lets it retry on a later launch from /Applications.
+        if LoginItem.shared.isEnabledOrPending { UserDefaults.standard.set(true, forKey: key) }
         launchItem?.state = LoginItem.shared.isEnabledOrPending ? .on : .off
     }
 
@@ -254,10 +261,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func enableAutoPaste() {
         if Paster.ensureAccessibilityPermission(prompt: true) {
-            let a = NSAlert()
-            a.messageText = L10n.t("autopaste.enabled.title")
-            a.informativeText = L10n.t("autopaste.enabled.info")
-            a.runModal()
+            showAlert(L10n.t("autopaste.enabled.title"), L10n.t("autopaste.enabled.info"))
+        } else {
+            // Not granted yet: the system dialog opened asynchronously. Tell the user what to do, instead
+            // of silently doing nothing (the common case — they clicked this because it wasn't working).
+            showAlert(L10n.t("autopaste.denied.title"), L10n.t("autopaste.denied.info"))
         }
     }
 
@@ -300,7 +308,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let self, resp == .OK, let url = op.url else { return }
             // Don't import while a voice note is still transcribing: the import replaces the audio
             // directory and items, and the in-flight transcription would resolve against stale ids.
-            guard !self.manager.hasActiveTranscription else {
+            guard !self.manager.hasActiveTranscription, !self.panelController.isBusyWithAudio else {
                 self.showAlert(L10n.t("import.busy.title"), L10n.t("import.busy.info")); return
             }
             let alert = NSAlert()

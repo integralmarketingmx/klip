@@ -146,7 +146,7 @@ final class AnnotationCanvasView: NSView {
         field.font = font
         field.textColor = color
         field.focusRingType = .none
-        field.placeholderString = "Escribe…"
+        field.placeholderString = L10n.t("editor.text.placeholder")
         field.stringValue = existing?.text ?? ""
         field.target = self
         field.action = #selector(textFieldCommitted(_:))
@@ -215,12 +215,21 @@ final class AnnotationCanvasView: NSView {
     func bumpFontSize(_ delta: CGFloat) { setFontSize(effectiveFontSize + delta) }
 
     /// Sets the current color and, if there is selected or being-edited text, recolors it.
+    /// Use for explicit user color actions (tapping a swatch / the color panel).
     func setColor(_ color: NSColor) {
         currentColor = color
         if let field = activeTextField { field.textColor = color; editColor = color }
         if let id = selectedTextID, let idx = annotations.firstIndex(where: { $0.id == id }) {
             annotations[idx].color = color
         }
+        needsDisplay = true
+    }
+
+    /// Sets the default color for FUTURE strokes only — never recolors a committed selected annotation.
+    /// Used on tool switches so changing tools doesn't silently rewrite an existing text's color.
+    func setDefaultColor(_ color: NSColor) {
+        currentColor = color
+        if let field = activeTextField { field.textColor = color; editColor = color }
         needsDisplay = true
     }
 

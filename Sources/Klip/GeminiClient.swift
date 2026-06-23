@@ -41,7 +41,10 @@ final class GeminiClient {
                     ["text": prompt]
                 ]
             ]],
-            "generationConfig": ["temperature": 0]
+            // thinkingBudget:0 disables the reasoning step: "-latest" now resolves to a thinking model
+            // (gemini-3.5-flash) that burns hundreds of "thought" tokens and can return an empty answer
+            // for a plain transcription. We want a direct, fast transcription.
+            "generationConfig": ["temperature": 0, "thinkingConfig": ["thinkingBudget": 0]]
         ]
         let body = try JSONSerialization.data(withJSONObject: payload)
 
@@ -65,13 +68,17 @@ final class GeminiClient {
 
         struct R: Decodable {
             struct Candidate: Decodable {
-                struct Content: Decodable { struct Part: Decodable { let text: String? }; let parts: [Part]? }
+                struct Content: Decodable {
+                    struct Part: Decodable { let text: String?; let thought: Bool? }
+                    let parts: [Part]?
+                }
                 let content: Content?
             }
             let candidates: [Candidate]?
         }
         guard let r = try? JSONDecoder().decode(R.self, from: respData) else { throw OpenAIError.invalidResponse }
         let text = (r.candidates?.first?.content?.parts ?? [])
+            .filter { $0.thought != true }      // skip reasoning parts; keep only the answer
             .compactMap { $0.text }
             .joined()
         return text
@@ -113,6 +120,9 @@ enum AIProvider {
         if selected == "gemini", GeminiClient.shared.hasAPIKey {
             return try await GeminiClient.shared.transcribe(audioURL: audioURL, language: language, model: model, vocabulary: vocabulary)
         }
-        return try await OpenAIClient.shared.transcribe(audioURL: audioURL, language: language, model: model, vocabulary: vocabulary)
+        // OpenAI path (selected openai, OR a gemini selection with no Gemini key falling back here). Use an
+        // OpenAI model — forwarding the Gemini model name would make OpenAI reject every request.
+        let openAIModel = (selected == "openai") ? model : Settings.shared.transcriptionModel
+        return try await OpenAIClient.shared.transcribe(audioURL: audioURL, language: language, model: openAIModel, vocabulary: vocabulary)
     }
 }

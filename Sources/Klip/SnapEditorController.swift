@@ -195,11 +195,14 @@ final class SnapEditorController: NSObject, NSWindowDelegate {
             b.contentTintColor = on ? .white : .labelColor   // clearly highlights the active tool
         }
         refreshColorSwatches()                                // the marker shows highlighter tones
-        // Only re-apply color when the PALETTE changes type (normal↔marker). Between normal tools
-        // the chosen color is preserved (including a custom one from the "more" picker).
+        // Only re-apply the DEFAULT color when the PALETTE changes type (normal↔marker). Between normal
+        // tools the chosen color is preserved. Use setDefaultColor so a tool switch never recolors a
+        // committed selected text annotation.
         let isMarker = (tool == .marker)
-        if isMarker != lastToolWasMarker, colorIndex >= 0 {
-            canvas.setColor(palette[min(colorIndex, palette.count - 1)])
+        if isMarker != lastToolWasMarker {
+            if colorIndex < 0 { colorIndex = 0 }              // snap a custom color to a swatch on palette change
+            refreshColorSwatches()
+            canvas.setDefaultColor(palette[min(colorIndex, palette.count - 1)])
         }
         lastToolWasMarker = isMarker
     }

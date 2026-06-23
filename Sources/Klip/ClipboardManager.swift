@@ -139,6 +139,12 @@ final class ClipboardManager: ObservableObject {
             item.sourceName = source.name           // refresh source with the new capture
             item.sourceBundleID = source.bundleID
             item.isRemote = remote ? true : nil
+            // Re-evaluate credential state on re-copy so a re-copied secret is masked again (don't keep
+            // showing a previously-unmarked secret in cleartext in the preview).
+            let isCred = CredentialDetector.looksLikeCredential(text)
+            item.isCredential = isCred ? true : nil
+            item.preview = isCred ? CredentialDetector.masked(text)
+                : String(text.prefix(160)).replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespaces)
             items.insert(item, at: 0)
         } else {
             let isCred = CredentialDetector.looksLikeCredential(text)
@@ -239,7 +245,18 @@ final class ClipboardManager: ObservableObject {
         items[idx].transcribing = false
         let item = items[idx]
         trimAndSave()
-        if !clean.isEmpty, canPaste { copyToPasteboard(item) }   // only if nothing changed the pasteboard
+        if !clean.isEmpty, canPaste {
+            copyToPasteboard(item)     // only if nothing changed the pasteboard
+            rebaselineVoiceGuards()    // OUR own paste isn't a user clobber: keep sibling notes auto-pasteable
+        }
+    }
+
+    /// Re-anchors every still-pending voice-note paste guard to the current pasteboard changeCount.
+    /// Called right after THIS app pastes a finished note, so a second concurrent note isn't falsely
+    /// suppressed by our own write (changeCount is a single global counter).
+    private func rebaselineVoiceGuards() {
+        let cc = NSPasteboard.general.changeCount
+        for id in voicePasteGuards.keys { voicePasteGuards[id] = cc }
     }
 
     /// Transcription failed: keeps the item visible (with playable audio if any) instead of

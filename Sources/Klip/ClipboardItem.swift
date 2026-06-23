@@ -74,6 +74,7 @@ struct ClipboardItem: Identifiable, Codable, Equatable {
             && lhs.isRemote == rhs.isRemote
             && lhs.text == rhs.text && lhs.preview == rhs.preview
             && lhs.imageFileName == rhs.imageFileName && lhs.audioFileName == rhs.audioFileName
+            && lhs.audioDuration == rhs.audioDuration   // drives the voice-note progress bar UI
             && lhs.name == rhs.name && lhs.collection == rhs.collection
     }
 }

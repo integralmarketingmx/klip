@@ -16,6 +16,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     private let manager: ClipboardManager
     private let selection = SelectionModel()
     private let recorder = Recorder()
+    /// True while audio is being recorded, finishing, or transcribing — used to block a destructive import.
+    var isBusyWithAudio: Bool { recorder.isRecording || recorder.finishing || recorder.transcribingCount > 0 }
     private weak var statusItem: NSStatusItem?
     private weak var previousApp: NSRunningApplication?
 
@@ -292,7 +294,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         var types: [UTType] = [.plainText]
         if let md = UTType(filenameExtension: "md") { types.append(md) }
         sp.allowedContentTypes = types
-        sp.nameFieldStringValue = (item.name?.isEmpty == false ? item.name! : "klip-texto") + ".txt"
+        sp.nameFieldStringValue = (item.name?.isEmpty == false ? item.name! : "klip-text") + ".txt"
         sp.canCreateDirectories = true
         modalCount += 1   // "a modal panel is open" guard (don't close the panel behind it)
         NSApp.activate(ignoringOtherApps: true)
@@ -308,9 +310,10 @@ final class PanelController: NSObject, NSWindowDelegate {
         guard !items.isEmpty, !exportInFlight else { return }   // don't overlap exports
         exportInFlight = true
         modalCount += 1   // protects the panel through the whole generation + save (closes the race window)
-        DispatchQueue.global(qos: .userInitiated).async {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = Storage.shared.combinedPDF(from: items)
             DispatchQueue.main.async {
+                guard let self else { return }
                 guard let result else {   // nothing exportable: warn instead of "the button does nothing"
                     self.modalCount -= 1; self.exportInFlight = false
                     self.showAlert(L10n.t("export.empty.title"), L10n.t("export.empty.info"))
@@ -339,7 +342,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         exportInFlight = true
         let sp = NSSavePanel()
         sp.allowedContentTypes = [.zip]
-        sp.nameFieldStringValue = "klip-seleccion.zip"
+        sp.nameFieldStringValue = "klip-selection.zip"
         sp.canCreateDirectories = true
         if exportable < items.count {
             sp.message = String(format: L10n.t("export.partial"), exportable, items.count)
@@ -544,7 +547,7 @@ final class PanelController: NSObject, NSWindowDelegate {
               let png = Storage.shared.pngData(from: img) else { return }
         let sp = NSSavePanel()
         sp.allowedContentTypes = [.png]
-        sp.nameFieldStringValue = "captura.png"
+        sp.nameFieldStringValue = "klip-capture.png"
         sp.canCreateDirectories = true
         modalCount += 1
         NSApp.activate(ignoringOtherApps: true)

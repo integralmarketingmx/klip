@@ -18,7 +18,9 @@ final class SnapController {
 
     /// Entry point (shortcut or menu).
     func start() {
-        guard !inProgress else { return }
+        // Block re-entry for the WHOLE flow: while capturing (inProgress) and while the selection overlay
+        // or the editor is on screen. Otherwise a second ⌘⇧U would stack shield windows and leak the first.
+        guard !inProgress, overlay == nil, editor == nil else { return }
 
         guard ScreenCapturer.hasPermission() else {
             promptForPermission()

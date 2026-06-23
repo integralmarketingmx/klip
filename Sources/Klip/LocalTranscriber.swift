@@ -51,9 +51,18 @@ actor LocalTranscriber {
 
     private func pipeline(for model: String) async throws -> WhisperKit {
         if let pipe, loadedModel == model { return pipe }
-        let wk = try await WhisperKit(WhisperKitConfig(model: model))   // downloads the model on first use
+        let wk: WhisperKit
+        do {
+            wk = try await WhisperKit(WhisperKitConfig(model: model))   // downloads the model on first use
+            loadedModel = model
+        } catch {
+            // A bad/unavailable model id (or a failed download for that variant) shouldn't break every
+            // transcription — fall back to the default model rather than failing hard.
+            guard model != Self.defaultModel else { throw error }
+            wk = try await WhisperKit(WhisperKitConfig(model: Self.defaultModel))
+            loadedModel = Self.defaultModel
+        }
         pipe = wk
-        loadedModel = model
         return wk
     }
 }

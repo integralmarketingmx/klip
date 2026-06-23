@@ -207,6 +207,15 @@ final class Settings: ObservableObject {
             if captureCombo == KeyCombo.legacyCaptureCombo { captureCombo = KeyCombo.defaultCaptureCombo }
             d.set(true, forKey: migCaptureKey)
         }
+
+        // One-time migration to on-device transcription (the new default). Existing cloud users predate
+        // the "local" option; move them to local once so transcription works offline with no API key.
+        // Reversible: they can re-select OpenAI/Gemini in Preferences (and won't be migrated again).
+        let migLocalKey = "migratedToLocalProvider"
+        if !d.bool(forKey: migLocalKey) {
+            aiProvider = "local"
+            d.set(true, forKey: migLocalKey)
+        }
     }
 
     func addExcludedApp(_ id: String) {
@@ -227,7 +236,7 @@ final class Settings: ObservableObject {
         guard !std.bool(forKey: migratedFlagKey) else { return }
         defer { std.set(true, forKey: migratedFlagKey) }
         guard let legacy = UserDefaults(suiteName: "com.proper.pastaclip") else { return }
-        // We don't migrate the shortcut (we want the new ⌃⇧V as the default) or didAutoEnableLogin
+        // We don't migrate the shortcuts (Klip uses its own defaults: ⌘⇧E / ⌘⇧I / ⌘⇧U) or didAutoEnableLogin
         // (Klip registers itself under its new identity).
         let keys = [K.maxItems, K.autoPaste, K.concealed, K.transient, K.autoGen, K.excluded]
         for key in keys {

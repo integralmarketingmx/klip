@@ -199,9 +199,12 @@ final class Storage {
         let bakItems = baseURL.appendingPathComponent("items.json.\(token).importbak")
         let bakImages = baseURL.appendingPathComponent("images.\(token).importbak")
         let bakAudio = baseURL.appendingPathComponent("audio.\(token).importbak")
-        // Clean up leftovers from earlier aborted imports (they don't collide with this attempt's).
+        // Clean up leftovers from earlier aborted imports — but NEVER this attempt's own backups (skip our
+        // token), so an overlapping import can't delete the backup we're about to rely on for rollback.
         if let leftovers = try? fm.contentsOfDirectory(at: baseURL, includingPropertiesForKeys: nil) {
-            for f in leftovers where f.lastPathComponent.hasSuffix(".importbak") { try? fm.removeItem(at: f) }
+            for f in leftovers where f.lastPathComponent.hasSuffix(".importbak") && !f.lastPathComponent.contains(token) {
+                try? fm.removeItem(at: f)
+            }
         }
 
         // Restores a destination from its backup (only if the backup exists → original is safe).
@@ -270,13 +273,20 @@ final class Storage {
     /// text as a text page. For uploading several captures/notes to an AI all at once.
     /// Returns the data and how many pages were generated (may be fewer than items.count if some
     /// item had no exportable content). nil if no page could be generated.
+    /// Text safe to write to an exported file/PDF: credentials are masked, never written in the clear
+    /// (mirrors MarkdownExporter). Returns nil if there's no text to export.
+    static func exportableText(_ item: ClipboardItem) -> String? {
+        guard let t = item.text, !t.isEmpty else { return nil }
+        return item.isCredential == true ? CredentialDetector.masked(t) : t
+    }
+
     func combinedPDF(from items: [ClipboardItem]) -> (data: Data, exported: Int)? {
         let doc = PDFDocument()
         var idx = 0
         for it in items {
             var pageImage: NSImage?
             if it.kind == .image, let f = it.imageFileName { pageImage = loadImage(fileName: f) }
-            else if let t = it.text, !t.isEmpty { pageImage = Self.pageImage(forText: t) }
+            else if let t = Self.exportableText(it) { pageImage = Self.pageImage(forText: t) }
             if let img = pageImage, let page = PDFPage(image: img) { doc.insert(page, at: idx); idx += 1 }
         }
         guard idx > 0, let data = doc.dataRepresentation() else { return nil }
@@ -331,8 +341,8 @@ final class Storage {
                 try? fm.copyItem(at: imageURL(for: f), to: stage.appendingPathComponent("\(n)-\(base).png"))
             } else if let af = it.audioFileName, audioExists(fileName: af) {
                 try? fm.copyItem(at: audioURL(for: af), to: stage.appendingPathComponent("\(n)-\(base).m4a"))
-                if let t = it.text, !t.isEmpty { try? t.data(using: .utf8)?.write(to: stage.appendingPathComponent("\(n)-\(base).txt")) }
-            } else if let t = it.text, !t.isEmpty {
+                if let t = Self.exportableText(it) { try? t.data(using: .utf8)?.write(to: stage.appendingPathComponent("\(n)-\(base).txt")) }
+            } else if let t = Self.exportableText(it) {
                 try? t.data(using: .utf8)?.write(to: stage.appendingPathComponent("\(n)-\(base).txt"))
             }
         }

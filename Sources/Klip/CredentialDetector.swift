@@ -10,8 +10,15 @@ enum CredentialDetector {
         "AIza[0-9A-Za-z_-]{30,}",                              // Google API
         "ya29\\.[0-9A-Za-z_-]+",                               // Google OAuth
         "eyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{6,}", // JWT
+        "(sk|rk|pk)_(live|test)_[A-Za-z0-9]{16,}", "whsec_[A-Za-z0-9]{16,}",  // Stripe
+        "SG\\.[A-Za-z0-9_-]{16,}\\.[A-Za-z0-9_-]{16,}",        // SendGrid
+        "SK[0-9a-fA-F]{32}", "AC[0-9a-fA-F]{32}",              // Twilio
+        "(?i)npm_[A-Za-z0-9]{20,}",                            // npm token
+        "glpat-[A-Za-z0-9_-]{20,}",                            // GitLab PAT
+        "-----BEGIN [A-Z ]*PRIVATE KEY-----",                  // PEM private key
+        "hf_[A-Za-z0-9]{20,}",                                 // Hugging Face
         "(?i)bearer\\s+[A-Za-z0-9._-]{20,}",                   // Bearer token
-        "(?i)(api[_-]?key|secret|access[_-]?token|password)\\s*[:=]\\s*[A-Za-z0-9._\\-+/]{12,}"
+        "(?i)(api[_-]?key|secret|access[_-]?token|password|token)\\s*[:=]\\s*\"?[A-Za-z0-9._\\-+/]{12,}"
     ]
 
     static func looksLikeCredential(_ text: String) -> Bool {

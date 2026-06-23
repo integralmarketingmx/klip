@@ -23,21 +23,30 @@ actor LocalTranscriber {
     ]
     static let defaultModel = "base"
 
-    /// Loads (and, if needed, downloads) the configured model ahead of time so the first voice note isn't
-    /// stuck waiting. Best-effort: called on launch when the on-device provider is active.
+    /// Loads an ALREADY-DOWNLOADED model into memory so the first voice note is instant. Best-effort, on
+    /// launch. It deliberately does NOT trigger a first-use download here — pulling a multi-hundred-MB model
+    /// silently at app launch would surprise users on metered/slow links; that download happens lazily on the
+    /// first voice note (with the "Downloading model…" status).
     func prewarm(model: String) async {
-        _ = try? await pipeline(for: model.isEmpty ? Self.defaultModel : model)
+        let id = model.isEmpty ? Self.defaultModel : model
+        guard Self.isModelReady(id) else { return }
+        _ = try? await pipeline(for: id)
     }
 
-    /// Whether the model is already on disk (so the next transcription won't trigger a first-use download).
-    /// Used to show a distinct "Downloading model…" state instead of the generic "Transcribing…".
+    /// Whether the model's CoreML weights are actually on disk (not just a folder created mid-download).
+    /// Used to (a) skip the launch prewarm for un-downloaded models and (b) show "Downloading model…".
     nonisolated static func isModelReady(_ model: String) -> Bool {
         let id = model.isEmpty ? defaultModel : model
         guard let base = try? FileManager.default.url(for: .documentDirectory, in: .userDomainMask,
                                                        appropriateFor: nil, create: false) else { return false }
         let dir = base.appendingPathComponent("huggingface/models/argmaxinc/whisperkit-coreml")
-        guard let entries = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return false }
-        return entries.contains { $0.contains(id) }   // e.g. "openai_whisper-base", "…large-v3_turbo…"
+        guard let entries = try? FileManager.default.contentsOfDirectory(atPath: dir.path),
+              let folder = entries.first(where: { $0.contains(id) }) else { return false }
+        // Require the actual weights: an interrupted download leaves only metadata (generation_config.json).
+        let modelDir = dir.appendingPathComponent(folder)
+        return ["AudioEncoder.mlmodelc", "TextDecoder.mlmodelc", "MelSpectrogram.mlmodelc"].allSatisfy {
+            FileManager.default.fileExists(atPath: modelDir.appendingPathComponent($0).path)
+        }
     }
 
     /// Transcribes an audio file fully on-device. `model` is a WhisperKit model name (see `models`).
@@ -81,18 +90,24 @@ actor LocalTranscriber {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// Remembers a model id that failed to load → the id it fell back to, so we don't re-attempt the
+    /// failing download on every subsequent transcription.
+    private var fallbackFor: [String: String] = [:]
+
     private func pipeline(for model: String) async throws -> WhisperKit {
-        if let pipe, loadedModel == model { return pipe }
+        let effective = fallbackFor[model] ?? model
+        if let pipe, loadedModel == effective { return pipe }
         let wk: WhisperKit
         do {
-            wk = try await WhisperKit(WhisperKitConfig(model: model))   // downloads the model on first use
-            loadedModel = model
+            wk = try await WhisperKit(WhisperKitConfig(model: effective))   // downloads the model on first use
+            loadedModel = effective
         } catch {
             // A bad/unavailable model id (or a failed download for that variant) shouldn't break every
-            // transcription — fall back to the default model rather than failing hard.
-            guard model != Self.defaultModel else { throw error }
+            // transcription — fall back to the default model and remember it (no repeated failed downloads).
+            guard effective != Self.defaultModel else { throw error }
             wk = try await WhisperKit(WhisperKitConfig(model: Self.defaultModel))
             loadedModel = Self.defaultModel
+            fallbackFor[model] = Self.defaultModel
         }
         pipe = wk
         return wk

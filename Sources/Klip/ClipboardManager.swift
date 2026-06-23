@@ -161,7 +161,7 @@ final class ClipboardManager: ObservableObject {
 
     private func addImage(_ image: NSImage, source: CaptureSource, remote: Bool) {
         let fileName = "\(UUID().uuidString).png"
-        storage.saveImage(image, fileName: fileName)
+        guard storage.saveImage(image, fileName: fileName) != nil else { return }   // don't add a phantom row if the file didn't save
         let size = image.pixelDimensions
         let preview = String(format: L10n.t("preview.image"), Int(size.width), Int(size.height))
         items.insert(ClipboardItem(kind: .image, imageFileName: fileName, preview: preview,
@@ -176,16 +176,19 @@ final class ClipboardManager: ObservableObject {
     @discardableResult
     func addAnnotatedScreenshot(_ image: NSImage, copyToClipboard: Bool = true) -> UUID {
         let fileName = "\(UUID().uuidString).png"
-        storage.saveImage(image, fileName: fileName)
         let size = image.pixelDimensions   // real pixels (not points): consistent badge on Retina
         let preview = String(format: L10n.t("preview.capture"), Int(size.width), Int(size.height))
         let item = ClipboardItem(kind: .image, imageFileName: fileName, preview: preview)
-        items.insert(item, at: 0)
-        trimAndSave()
-        if copyToClipboard {
+        if storage.saveImage(image, fileName: fileName) != nil {
+            items.insert(item, at: 0)   // only add a history row if the file actually saved
+            trimAndSave()
+        } else {
+            NSSound.beep()
+        }
+        if copyToClipboard {            // still hand the image to the clipboard even if saving failed
             let pb = NSPasteboard.general
             pb.clearContents(); pb.writeObjects([image])
-            lastChangeCount = pb.changeCount   // already in the history: don't re-capture it as a new item
+            lastChangeCount = pb.changeCount   // already handled here: don't re-capture it as a new item
         }
         return item.id
     }

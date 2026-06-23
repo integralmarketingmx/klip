@@ -33,38 +33,43 @@ final class GeminiClient {
         let prompt = "Transcribe this audio verbatim. Return ONLY the transcription, "
             + "with no comments, headings or formatting.\(langHint)\(vocabHint)"
 
-        let payload: [String: Any] = [
-            "contents": [[
-                "role": "user",
-                "parts": [
+        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(resolvedModel):generateContent")!
+
+        // `thinkingBudget:0` disables the reasoning step (the "-latest" alias now resolves to a thinking
+        // model that burns "thought" tokens and can return an empty answer for a plain transcription). But
+        // some user-selectable models reject thinkingConfig with a 400 — in that case retry once without it.
+        func send(includeThinking: Bool) async throws -> Data {
+            var gen: [String: Any] = ["temperature": 0]
+            if includeThinking { gen["thinkingConfig"] = ["thinkingBudget": 0] }
+            let payload: [String: Any] = [
+                "contents": [["role": "user", "parts": [
                     ["inline_data": ["mime_type": Self.mimeType(for: audioURL), "data": base64]],
                     ["text": prompt]
-                ]
-            ]],
-            // thinkingBudget:0 disables the reasoning step: "-latest" now resolves to a thinking model
-            // (gemini-3.5-flash) that burns hundreds of "thought" tokens and can return an empty answer
-            // for a plain transcription. We want a direct, fast transcription.
-            "generationConfig": ["temperature": 0, "thinkingConfig": ["thinkingBudget": 0]]
-        ]
-        let body = try JSONSerialization.data(withJSONObject: payload)
+                ]]],
+                "generationConfig": gen
+            ]
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.setValue(key, forHTTPHeaderField: "x-goog-api-key")
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try JSONSerialization.data(withJSONObject: payload)
+            req.timeoutInterval = 120
 
-        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(resolvedModel):generateContent")!
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue(key, forHTTPHeaderField: "x-goog-api-key")
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = body
-        req.timeoutInterval = 120
-
-        let respData: Data, resp: URLResponse
-        do { (respData, resp) = try await session.data(for: req) } catch { throw OpenAIError.transport(error) }
-        guard let http = resp as? HTTPURLResponse else { throw OpenAIError.invalidResponse }
-        guard (200..<300).contains(http.statusCode) else {
-            struct E: Decodable { struct Err: Decodable { let message: String }; let error: Err }
-            let msg = (try? JSONDecoder().decode(E.self, from: respData))?.error.message
-                ?? (String(data: respData, encoding: .utf8) ?? "")
-            throw OpenAIError.http(status: http.statusCode, message: "Gemini: \(msg)")
+            let respData: Data, resp: URLResponse
+            do { (respData, resp) = try await session.data(for: req) } catch { throw OpenAIError.transport(error) }
+            guard let http = resp as? HTTPURLResponse else { throw OpenAIError.invalidResponse }
+            guard (200..<300).contains(http.statusCode) else {
+                struct E: Decodable { struct Err: Decodable { let message: String }; let error: Err }
+                let msg = (try? JSONDecoder().decode(E.self, from: respData))?.error.message
+                    ?? (String(data: respData, encoding: .utf8) ?? "")
+                if http.statusCode == 400, includeThinking, msg.lowercased().contains("thinking") {
+                    return try await send(includeThinking: false)   // this model doesn't accept thinkingConfig
+                }
+                throw OpenAIError.http(status: http.statusCode, message: "Gemini: \(msg)")
+            }
+            return respData
         }
+        let respData = try await send(includeThinking: true)
 
         struct R: Decodable {
             struct Candidate: Decodable {

@@ -46,7 +46,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let m = Settings.shared.localModel
             Task.detached(priority: .utility) { await LocalTranscriber.shared.prewarm(model: m) }
         }
-        Settings.shared.$uiLanguage.dropFirst().sink { [weak self] _ in self?.buildMenu() }.store(in: &cancellables)
+        // Hop to main explicitly so buildMenu() (@MainActor) is safe no matter where uiLanguage is mutated.
+        Settings.shared.$uiLanguage.dropFirst().receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.buildMenu() }.store(in: &cancellables)
     }
 
     // An accessory app (.accessory) has no main menu, so SwiftUI text fields don't receive

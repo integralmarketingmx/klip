@@ -39,12 +39,17 @@ enum Markdownify {
         let lower = t.lowercased()
         if (t.hasPrefix("{") || t.hasPrefix("[")), t.contains("\""), t.contains(":") { return "json" }
         if t.hasPrefix("#!"), lower.contains("sh") { return "bash" }
-        if t.range(of: "(?m)^\\s*(\\$ |sudo |npm |yarn |pnpm |brew |git |cd |curl |echo |export )", options: .regularExpression) != nil { return "bash" }
+        // Keywords anchored to line start so a word in prose ("git is great") doesn't trigger a tag.
+        if t.range(of: "(?m)^\\s*(\\$ |sudo |npm |yarn |pnpm |brew |curl |cd |git (clone|pull|push|commit|checkout|switch|status|add|rebase|merge|log|diff|branch|stash|fetch|reset|init|remote|tag) )", options: .regularExpression) != nil { return "bash" }
         if t.hasPrefix("<") { return (lower.contains("<!doctype html") || lower.contains("<html")) ? "html" : "xml" }
-        if t.range(of: "(?i)\\b(select|insert into|update |delete from|create table)\\b", options: .regularExpression) != nil { return "sql" }
-        if t.contains("func ") || t.contains("->") || t.range(of: "@(MainActor|objc|State|Published)", options: .regularExpression) != nil { return "swift" }
-        if t.range(of: "(?m)^\\s*(def |class .*:|from \\w+ import |import \\w)", options: .regularExpression) != nil { return "python" }
-        if t.range(of: "(function |=>|\\bconst |\\bexport |require\\()", options: .regularExpression) != nil { return "javascript" }
+        // SQL only when UPPERCASE keywords pair up (SELECT…FROM), so prose "select the file from…" doesn't match.
+        if t.range(of: "\\b(SELECT\\b[\\s\\S]+\\bFROM\\b|INSERT INTO\\b|UPDATE\\b[\\s\\S]+\\bSET\\b|DELETE FROM\\b|CREATE TABLE\\b)", options: .regularExpression) != nil { return "sql" }
+        if t.contains("func ") || t.range(of: "@(MainActor|objc|State|Published|IBOutlet|escaping)", options: .regularExpression) != nil
+            || t.range(of: "(?m)^\\s*(import \\w+$|guard .+ else \\{)", options: .regularExpression) != nil { return "swift" }
+        if t.range(of: "(?m)^\\s*(def |class \\w+.*:|from \\w[\\w.]* import |import \\w)", options: .regularExpression) != nil { return "python" }
+        if t.range(of: "=>", options: .regularExpression) != nil
+            || t.range(of: "(?m)^\\s*(function |const |let |var |export )", options: .regularExpression) != nil
+            || t.contains("require(") { return "javascript" }
         return ""
     }
 }

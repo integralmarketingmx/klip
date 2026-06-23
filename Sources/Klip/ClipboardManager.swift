@@ -148,13 +148,13 @@ final class ClipboardManager: ObservableObject {
             // showing a previously-unmarked secret in cleartext in the preview).
             let isCred = CredentialDetector.looksLikeCredential(text)
             item.isCredential = isCred ? true : nil
-            item.preview = isCred ? CredentialDetector.masked(text)
+            item.preview = isCred ? CredentialDetector.maskedPlaceholder
                 : String(text.prefix(160)).replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespaces)
             items.insert(item, at: 0)
         } else {
             let isCred = CredentialDetector.looksLikeCredential(text)
             let preview = isCred
-                ? CredentialDetector.masked(text)   // don't store the secret in cleartext in the preview
+                ? CredentialDetector.maskedPlaceholder   // constant placeholder: never persist secret-derived chars (the row shows masked(text) live)
                 : String(text.prefix(160)).replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespaces)
             items.insert(ClipboardItem(kind: .text, text: text, preview: preview,
                                        sourceName: source.name, sourceBundleID: source.bundleID,
@@ -318,6 +318,7 @@ final class ClipboardManager: ObservableObject {
         switch item.kind {
         case .text:
             guard let t = item.text, !t.isEmpty else { return }   // voice note without text: don't touch the pasteboard
+            if item.isCredential == true, CredentialCrypto.isSealed(t) { return }   // undecryptable on this Mac: don't copy the raw token
             pb.clearContents(); pb.setString(t, forType: .string)
         case .image:
             guard let f = item.imageFileName, let img = storage.loadImage(fileName: f) else { return }
@@ -404,7 +405,7 @@ final class ClipboardManager: ObservableObject {
         items[idx].isCredential = nowCred ? true : nil
         if let t = items[idx].text {   // regenerate the preview (mask / unmask)
             items[idx].preview = nowCred
-                ? CredentialDetector.masked(t)
+                ? CredentialDetector.maskedPlaceholder   // constant: the row computes masked(text) live
                 : String(t.prefix(160)).replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespaces)
         }
         storage.saveItems(items)

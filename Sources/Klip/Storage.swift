@@ -48,10 +48,25 @@ final class Storage {
     /// plaintext for in-memory use; non-credential text and never-encrypted (legacy) text pass through.
     private func decryptCredentials(_ items: [ClipboardItem]) -> [ClipboardItem] {
         items.map { item in
-            guard item.isCredential == true, let t = item.text, CredentialCrypto.isSealed(t) else { return item }
-            var copy = item
-            copy.text = CredentialCrypto.open(t)   // nil if the key is from another machine (cross-device restore)
-            return copy
+            if item.isCredential == true, let t = item.text, CredentialCrypto.isSealed(t) {
+                // CRITICAL: if open() fails (key from another Mac / Keychain reset), KEEP the sealed token.
+                // Nil'ing it would let the next saveItems write null over the only copy of the secret —
+                // permanent data loss. With the token preserved, saveItems' isSealed guard round-trips it.
+                guard let plain = CredentialCrypto.open(t) else { return item }
+                var copy = item
+                copy.text = plain
+                return copy
+            }
+            // Promote legacy/never-flagged plaintext secrets (captured before this feature, or imported from
+            // an old backup) so the next save seals them — otherwise they'd sit in items.json in the clear.
+            if item.kind == .text, item.isVoiceNote != true, item.isCredential != true,
+               let t = item.text, !CredentialCrypto.isSealed(t), CredentialDetector.looksLikeCredential(t) {
+                var copy = item
+                copy.isCredential = true
+                copy.preview = CredentialDetector.maskedPlaceholder   // constant: never persist secret-derived chars
+                return copy
+            }
+            return item
         }
     }
 

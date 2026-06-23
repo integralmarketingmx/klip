@@ -142,8 +142,10 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
             mSelector: kAudioHardwarePropertyDefaultInputDevice,
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain)
+        // The block is dispatched on DispatchQueue.main (passed below), so it already runs on the main
+        // thread — assert MainActor directly instead of an extra async hop.
         let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
-            DispatchQueue.main.async { MainActor.assumeIsolated { self?.handleInputDeviceChange() } }
+            MainActor.assumeIsolated { self?.handleInputDeviceChange() }
         }
         let status = AudioObjectAddPropertyListenerBlock(
             AudioObjectID(kAudioObjectSystemObject), &addr, DispatchQueue.main, block)

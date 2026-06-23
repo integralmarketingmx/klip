@@ -440,7 +440,12 @@ struct ItemRow: View {
 
     private var displayedPreview: String {
         // The eye toggles masked/real (item.preview is always masked for credentials).
-        if isCredential, let t = item.text { return revealed ? t : CredentialDetector.masked(t) }
+        if isCredential, let t = item.text {
+            // Sealed-but-undecryptable (credential encrypted on another Mac): never show the raw token,
+            // even when "revealed" — show the stored placeholder.
+            if CredentialCrypto.isSealed(t) { return item.preview.isEmpty ? CredentialDetector.maskedPlaceholder : item.preview }
+            return revealed ? t : CredentialDetector.masked(t)
+        }
         return item.preview.isEmpty ? L10n.t("item.empty") : item.preview
     }
 

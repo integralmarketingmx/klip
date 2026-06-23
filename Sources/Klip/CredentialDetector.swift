@@ -42,6 +42,10 @@ enum CredentialDetector {
         return nil
     }
 
+    /// A constant placeholder with NO secret-derived characters. Used for anything PERSISTED (the on-disk
+    /// preview, backups) so the last-4 reveal hint from `masked` never lands in items.json / the .zip.
+    static let maskedPlaceholder = "🔑 ••••••"
+
     /// Masked version to display without revealing the secret. For multi-line blobs we never echo the
     /// content (masking just the tail would hide a harmless trailing line, not the secret).
     static func masked(_ text: String) -> String {

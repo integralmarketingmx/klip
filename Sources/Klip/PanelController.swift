@@ -202,7 +202,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         // ⌘↩ → copy the selected text item as a code block (the flagship vibe-coder action), keyboard-only.
         if flags == .command, event.keyCode == 36,
            let id = selection.selectedID, let item = manager.items.first(where: { $0.id == id }),
-           item.kind == .text, !(item.text?.isEmpty ?? true) {
+           item.kind == .text, item.isCredential != true, !(item.text?.isEmpty ?? true) {   // never auto-paste a secret
             copyAsCode(of: item); return nil
         }
         if flags.contains(.command) { return event }   // don't break ⌘A/⌘C/⌘V in the search field
@@ -288,6 +288,7 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     /// Copies the text wrapped in a Markdown code block (``` ```), ready to paste into an AI chat.
     private func copyAsCode(of item: ClipboardItem) {
+        guard item.isCredential != true else { return }   // never wrap+auto-paste a secret
         guard let t = item.text, !t.isEmpty else { return }
         let target = previousApp
         manager.setClipboardText("```\(Markdownify.inferCodeLanguage(t))\n\(t)\n```")

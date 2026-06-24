@@ -90,6 +90,10 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.isMovableByWindowBackground = true
+        // Appear on the CURRENT Space and OVER full-screen apps. Without this, pressing the hotkey while a
+        // full-screen app (e.g. an IDE) is focused fires the action but the panel opens on another Space —
+        // it looks like "nothing happened". fullScreenAuxiliary lets it overlay the full-screen Space.
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         panel.delegate = self
 
         let fx = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: 480, height: 640))
@@ -124,6 +128,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.alphaValue = 0
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
+        panel.orderFrontRegardless()   // force it to the front even when Klip isn't the active app (e.g. over a full-screen IDE)
         selection.reset()
         selection.selecting = false               // authoritative on open (don't rely on SwiftUI onChange timing)
         selection.openToken &+= 1                 // triggers search/focus reset in the view
@@ -431,6 +436,7 @@ final class PanelController: NSObject, NSWindowDelegate {
             p.level = .floating; p.isReleasedWhenClosed = false
             p.isMovableByWindowBackground = true   // draggable from the background (borderless panel without a title bar)
             p.hidesOnDeactivate = false   // don't hide when focus returns to the user's app
+            p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]   // show over full-screen apps too
             let fx = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: 360, height: 320))
             fx.material = .hudWindow; fx.blendingMode = .behindWindow; fx.state = .active
             fx.wantsLayer = true; fx.layer?.cornerRadius = 16; fx.layer?.masksToBounds = true
@@ -448,6 +454,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
         NSApp.activate(ignoringOtherApps: true)
         recordingPanel?.makeKeyAndOrderFront(nil)
+        recordingPanel?.orderFrontRegardless()
     }
 
     private func closeRecordingPopup() {

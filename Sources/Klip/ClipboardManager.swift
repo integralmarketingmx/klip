@@ -23,7 +23,9 @@ final class ClipboardManager: ObservableObject {
 
     init() {
         lastChangeCount = NSPasteboard.general.changeCount
-        items = storage.loadItems()
+        items = storage.loadItemsRaw()   // sealed credentials stay sealed here: NO Keychain access on the
+                                         // launch/main thread (that can raise a blocking trust prompt → hang)
+        decryptCredentialsInBackground() // decrypt off-main, then merge the plaintext back in
         reconcileVoiceNotesOnLoad()
         // Clean up orphans (audio/images with no item, e.g. after quitting mid-transcription).
         // Only if there are items: an empty items array also happens when items.json is corrupt/unreadable, and in
@@ -52,6 +54,36 @@ final class ClipboardManager: ObservableObject {
         let before = items.count
         items.removeAll { $0.isVoiceNote == true && $0.transcribing == true && $0.audioFileName == nil }
         if changed || items.count != before { storage.saveItems(items) }
+    }
+
+    /// Decrypts sealed credentials OFF the main thread, then merges the plaintext back in. Keychain access
+    /// can raise a blocking trust prompt (e.g. after the app is re-signed); doing it on the launch/main
+    /// thread would wedge the app. Until this completes, sealed credentials simply show the masked
+    /// placeholder. Merges by id and only touches credential fields, so a clip captured (or an item
+    /// pinned/deleted) during the brief window is not clobbered.
+    private func decryptCredentialsInBackground() {
+        let snapshot = items
+        guard !snapshot.isEmpty else { return }
+        Task.detached(priority: .userInitiated) {
+            let decrypted = Storage.shared.decryptCredentials(snapshot)
+            let byId = Dictionary(decrypted.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                var promoted = false   // a legacy cleartext secret got flagged → must persist so it gets sealed
+                self.items = self.items.map { cur in
+                    guard let d = byId[cur.id] else { return cur }
+                    if cur.isCredential != true && d.isCredential == true { promoted = true }
+                    guard cur.text != d.text || cur.isCredential != d.isCredential || cur.preview != d.preview
+                    else { return cur }
+                    var c = cur
+                    c.text = d.text; c.isCredential = d.isCredential; c.preview = d.preview
+                    return c
+                }
+                // Only re-save for legacy promotions; a plain sealed→plaintext decrypt is in-memory only
+                // (the on-disk sealed form is already correct), so don't rewrite items.json every launch.
+                if promoted { self.storage.saveItems(self.items) }
+            }
+        }
     }
 
     func start() {

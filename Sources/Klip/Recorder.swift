@@ -203,7 +203,7 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
             silenceWarning = true
             NSSound.beep()
         } else if silentTicks >= stopTicks {
-            MainActor.assumeIsolated { stop() }   // stop due to inactivity: finish and transcribe
+            stop()   // stop due to inactivity: finish and transcribe (already on MainActor via the meter timer)
         }
     }
 

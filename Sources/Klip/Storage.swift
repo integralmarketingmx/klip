@@ -46,7 +46,7 @@ final class Storage {
 
     /// Credential secrets are stored encrypted on disk (see CredentialCrypto). Decrypt them back to
     /// plaintext for in-memory use; non-credential text and never-encrypted (legacy) text pass through.
-    private func decryptCredentials(_ items: [ClipboardItem]) -> [ClipboardItem] {
+    func decryptCredentials(_ items: [ClipboardItem]) -> [ClipboardItem] {
         items.map { item in
             if item.isCredential == true, let t = item.text, CredentialCrypto.isSealed(t) {
                 // CRITICAL: if open() fails (key from another Mac / Keychain reset), KEEP the sealed token.
@@ -72,11 +72,14 @@ final class Storage {
         }
     }
 
-    func loadItems() -> [ClipboardItem] {
+    /// Decodes items WITHOUT touching the Keychain (no credential decryption). Safe on the launch / main
+    /// thread: a Keychain read here can raise a blocking "app wants to use your keychain" trust prompt that
+    /// wedges the whole app before it ever runs. Decrypt separately, off the main thread (decryptCredentials).
+    func loadItemsRaw() -> [ClipboardItem] {
         guard let data = try? Data(contentsOf: itemsURL) else { return [] }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        if let items = try? decoder.decode([ClipboardItem].self, from: data) { return decryptCredentials(items) }
+        if let items = try? decoder.decode([ClipboardItem].self, from: data) { return items }
         // Decoding failed but the file exists → back it up before anything overwrites it.
         if !data.isEmpty {
             try? data.write(to: baseURL.appendingPathComponent("items.corrupt.json"), options: .atomic)
@@ -84,12 +87,21 @@ final class Storage {
         return []
     }
 
+    /// Convenience: raw load + decrypt. Only call OFF the main thread (it touches the Keychain).
+    func loadItems() -> [ClipboardItem] { decryptCredentials(loadItemsRaw()) }
+
     func saveItems(_ items: [ClipboardItem]) {
         // Encrypt credential secrets before they hit disk (and the backup zip). In-memory items are
         // untouched; if encryption is unavailable we keep the plaintext rather than lose the value.
         let toStore = items.map { item -> ClipboardItem in
-            guard item.isCredential == true, let t = item.text, !t.isEmpty, !CredentialCrypto.isSealed(t),
-                  let sealed = CredentialCrypto.seal(t) else { return item }
+            guard item.isCredential == true, let t = item.text, !t.isEmpty, !CredentialCrypto.isSealed(t) else { return item }
+            guard let sealed = CredentialCrypto.seal(t) else {
+                // Keychain key unreadable (e.g. the app was re-signed with a different identity and the user
+                // denied the access prompt). We keep the value rather than lose it, but it would land in
+                // cleartext — make that NON-SILENT so it can be diagnosed instead of degrading privacy quietly.
+                NSLog("KLIP: could not encrypt a credential (Keychain key inaccessible); value kept unsealed")
+                return item
+            }
             var copy = item
             copy.text = sealed
             return copy

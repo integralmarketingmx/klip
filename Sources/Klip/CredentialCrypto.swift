@@ -39,6 +39,13 @@ enum CredentialCrypto {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: keyAccount,
             kSecReturnData as String: true,
+            // NEVER show a blocking Keychain prompt. This read runs during launch (loadItems on the main
+            // thread). If the signing identity changed (e.g. an ad-hoc rebuild), the item's ACL no longer
+            // trusts us and the DEFAULT behaviour is a modal "Klip wants to use your keychain" dialog that
+            // WEDGES the whole app before it ever runs (no menu bar, no poll, no capture). Fail fast instead:
+            // open() then returns nil, the sealed token is preserved, and decrypt resumes once a trusting
+            // identity is back (a stable signing cert).
+            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail,
         ]
         var out: CFTypeRef?
         guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess,

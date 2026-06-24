@@ -158,22 +158,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if captureHotKey == nil, Settings.shared.captureCombo != .defaultCaptureCombo {
             Settings.shared.captureCombo = .defaultCaptureCombo; lastGoodCaptureCombo = .defaultCaptureCombo; makeCaptureHotKey(.defaultCaptureCombo)
         }
-        // If even the default capture shortcut (⌘⇧U) collides (e.g. another app already took it),
-        // try the suggested combinations so capture isn't left inert without the user knowing.
+        // If even the default capture shortcut collides (e.g. another app already took it), try the suggested
+        // combinations so capture isn't left inert without the user knowing.
         if captureHotKey == nil {
             for s in KeyCombo.suggestions where s != Settings.shared.combo && s != Settings.shared.voiceCombo {
                 makeCaptureHotKey(s)
                 if captureHotKey != nil {
                     Settings.shared.captureCombo = s; lastGoodCaptureCombo = s
-                    showAlert(L10n.t("hotkey.capture.changed.title"), L10n.t("hotkey.capture.changed.info"))
+                    // Defer the modal: a synchronous runModal here would stall the rest of launch.
+                    Task { @MainActor in self.showAlert(L10n.t("hotkey.capture.changed.title"), L10n.t("hotkey.capture.changed.info")) }
                     break
                 }
             }
         }
         // If the panel/voice shortcuts are still dead after the default-reset (another app globally owns
-        // even the default combo), tell the user instead of leaving a silently-inert shortcut.
+        // even the default combo), tell the user instead of leaving a silently-inert shortcut (deferred so it
+        // doesn't block launch).
         if hotKey == nil || voiceHotKey == nil {
-            NSSound.beep(); showAlert(L10n.t("act.prefs"), L10n.t("hotkey.inuse"))
+            Task { @MainActor in NSSound.beep(); self.showAlert(L10n.t("act.prefs"), L10n.t("hotkey.inuse")) }
         }
     }
 

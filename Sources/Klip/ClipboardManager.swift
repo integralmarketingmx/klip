@@ -67,13 +67,17 @@ final class ClipboardManager: ObservableObject {
         Task.detached(priority: .userInitiated) {
             let decrypted = Storage.shared.decryptCredentials(snapshot)
             let byId = Dictionary(decrypted.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+            // Did any legacy cleartext secret get flagged? If so its plaintext must be persisted (sealed) —
+            // pre-create the encryption key HERE (off-main) so the on-main saveItems below never runs a
+            // Keychain WRITE (SecItemAdd) on the main thread.
+            let snapById = Dictionary(snapshot.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+            let promoted = decrypted.contains { d in snapById[d.id]?.isCredential != true && d.isCredential == true }
+            if promoted { CredentialCrypto.warmKey() }
             await MainActor.run { [weak self] in
                 guard let self else { return }
-                var promoted = false   // a legacy cleartext secret got flagged → must persist so it gets sealed
                 self.items = self.items.map { cur in
-                    guard let d = byId[cur.id] else { return cur }
-                    if cur.isCredential != true && d.isCredential == true { promoted = true }
-                    guard cur.text != d.text || cur.isCredential != d.isCredential || cur.preview != d.preview
+                    guard let d = byId[cur.id],
+                          cur.text != d.text || cur.isCredential != d.isCredential || cur.preview != d.preview
                     else { return cur }
                     var c = cur
                     c.text = d.text; c.isCredential = d.isCredential; c.preview = d.preview
@@ -81,6 +85,7 @@ final class ClipboardManager: ObservableObject {
                 }
                 // Only re-save for legacy promotions; a plain sealed→plaintext decrypt is in-memory only
                 // (the on-disk sealed form is already correct), so don't rewrite items.json every launch.
+                // The key was warmed off-main above, so seal() here only reads the key (fast, no prompt).
                 if promoted { self.storage.saveItems(self.items) }
             }
         }

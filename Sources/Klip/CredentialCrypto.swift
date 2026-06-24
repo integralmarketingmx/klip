@@ -32,6 +32,10 @@ enum CredentialCrypto {
         return String(data: plain, encoding: .utf8)
     }
 
+    /// Ensures the encryption key exists (creating it if absent) WITHOUT returning it. Call OFF the main
+    /// thread before a save that may need to seal, so the key's one-time SecItemAdd doesn't run on main.
+    static func warmKey() { _ = loadOrCreateKey() }
+
     // MARK: - Keychain-stored symmetric key
 
     private static func loadKey() -> SymmetricKey? {

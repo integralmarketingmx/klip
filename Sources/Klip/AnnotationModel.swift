@@ -61,7 +61,11 @@ struct Annotation {
         guard let first = points.first else { return nil }
         var minX = first.x, minY = first.y, maxX = first.x, maxY = first.y
         for p in points { minX = min(minX, p.x); minY = min(minY, p.y); maxX = max(maxX, p.x); maxY = max(maxY, p.y) }
-        let grip = (tool == .marker ? max(lineWidth * 4, 14) : lineWidth) / 2 + 6
+        // La flecha dibuja una cabeza que sobresale ~`head` más allá del punto final; hay que cubrirla
+        // para que el highlight no la recorte y se pueda tocar. Grosor base holgado para facilitar el clic.
+        let head = (tool == .arrow) ? max(12, lineWidth * 4) : 0
+        let base = (tool == .marker ? max(lineWidth * 4, 14) : lineWidth) / 2 + 8
+        let grip = max(base, head)
         return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY).insetBy(dx: -grip, dy: -grip)
     }
 

@@ -33,7 +33,11 @@ final class SnapController {
         Task { @MainActor in
             do {
                 let shot = try await ScreenCapturer.captureDisplay(containing: mouse)
-                self.inProgress = false
+                // OJO: NO liberar inProgress aquí. El overlay es una ventana-escudo (CGShieldingWindowLevel)
+                // que bloquea todo el input; si liberáramos el guard ahora, un segundo disparo del atajo
+                // crearía un segundo overlay y dejaría el primero HUÉRFANO en pantalla para siempre.
+                // inProgress se libera en el completion del overlay (presentOverlay), cuando el escudo
+                // ya se cerró.
                 self.presentOverlay(shot)
             } catch CaptureError.noPermission {
                 self.inProgress = false          // liberar ANTES del modal (evita reentrancia del runloop)
@@ -71,10 +75,14 @@ final class SnapController {
 
     @MainActor
     private func presentOverlay(_ shot: DisplayShot) {
+        overlay?.dismissExternally()   // nunca dejar un overlay previo huérfano (escudo que bloquea todo)
+        let captureScreen = shot.screen
         let overlay = CaptureOverlayController(shot: shot) { [weak self] image in
-            self?.overlay = nil
-            guard let self, let image else { return }
-            self.presentPreview(image)
+            guard let self else { return }
+            self.overlay = nil
+            self.inProgress = false   // el escudo ya se cerró: liberar el guard de captura
+            guard let image else { return }
+            self.presentPreview(image, on: captureScreen)
         }
         self.overlay = overlay
         overlay.present()
@@ -83,10 +91,11 @@ final class SnapController {
     /// Miniatura flotante tras seleccionar la región: clic → editar; ignorar (~6 s) → solo guardar en
     /// Klip. La imagen se copia al portapapeles de inmediato (la miniatura muestra "✓ Copiado").
     @MainActor
-    private func presentPreview(_ image: NSImage) {
+    private func presentPreview(_ image: NSImage, on screen: NSScreen) {
         manager.copyCapturedToClipboard(image)
         let preview = CapturePreviewController(
             image: image,
+            screen: screen,
             onEdit: { [weak self] img in
                 self?.preview = nil
                 self?.openEditor(with: img)

@@ -7,21 +7,28 @@ final class CapturePreviewController: NSObject {
     private var timer: Timer?
     private var resolved = false
     private let image: NSImage
+    private let screen: NSScreen?
     private let onEdit: (NSImage) -> Void
     private let onSaveOnly: (NSImage) -> Void
     private let holdSeconds: TimeInterval = 6
     /// Se retiene a sí mismo mientras la miniatura vive (PanelController no necesita gestionarlo).
     private var selfRef: CapturePreviewController?
 
-    init(image: NSImage, onEdit: @escaping (NSImage) -> Void, onSaveOnly: @escaping (NSImage) -> Void) {
+    init(image: NSImage, screen: NSScreen? = nil,
+         onEdit: @escaping (NSImage) -> Void, onSaveOnly: @escaping (NSImage) -> Void) {
         self.image = image
+        self.screen = screen
         self.onEdit = onEdit
         self.onSaveOnly = onSaveOnly
         super.init()
     }
 
     func show() {
-        guard let screen = NSScreen.main else { onSaveOnly(image); return }
+        // Pantalla de la captura; si no se pasó, la principal; y si todo falla, la primera disponible.
+        // Solo si NO hay ninguna pantalla caemos a "guardar sin miniatura" (en vez de descartar antes).
+        guard let screen = screen ?? NSScreen.main ?? NSScreen.screens.first else {
+            onSaveOnly(image); return
+        }
         selfRef = self
         let vf = screen.visibleFrame
 

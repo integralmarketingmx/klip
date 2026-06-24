@@ -39,13 +39,15 @@ final class SnapEditorController: NSObject, NSWindowDelegate {
         let titleBarH: CGFloat = 28      // alto de la barra de título de la ventana
 
         // REGLA: el usuario NUNCA hace scroll. La imagen se escala (solo zoom OUT) para caber entera
-        // dentro del monitor principal; el lienzo conserva su resolución nativa vía magnificación del
-        // scroll view (las anotaciones y el aplanado siguen a resolución completa).
+        // dentro del monitor principal. El lienzo se dibuja a ese tamaño reducido; el APLANADO sigue a
+        // resolución nativa (flattened() usa los píxeles físicos de la base). Sin scroll view, sin
+        // magnificación: más robusto en multimonitor.
         let availW = visible.width * 0.96
         let availH = visible.height - toolbarH - titleBarH
-        let scale = min(1, min(availW / imgSize.width, availH / imgSize.height))
-        let viewW = imgSize.width * scale
-        let viewH = imgSize.height * scale
+        let imgW = max(1, imgSize.width), imgH = max(1, imgSize.height)
+        let scale = min(1, min(availW / imgW, availH / imgH))
+        let viewW = imgW * scale
+        let viewH = imgH * scale
         let contentW = max(minBarWidth, viewW)
         let contentH = viewH + toolbarH
 
@@ -56,20 +58,13 @@ final class SnapEditorController: NSObject, NSWindowDelegate {
         win.delegate = self
 
         let content = NSView(frame: NSRect(x: 0, y: 0, width: contentW, height: contentH))
+        content.wantsLayer = true
+        content.layer?.backgroundColor = NSColor.underPageBackgroundColor.cgColor
 
-        // Lienzo dentro de un scroll view con MAGNIFICACIÓN fija = scale (zoom out). El documento queda
-        // exactamente del tamaño del área visible → nunca hay barras de scroll.
-        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: contentW, height: contentH - toolbarH))
-        scroll.autoresizingMask = [.width, .height]
-        scroll.hasVerticalScroller = false
-        scroll.hasHorizontalScroller = false
-        scroll.allowsMagnification = true
-        scroll.minMagnification = scale
-        scroll.maxMagnification = scale
-        scroll.documentView = canvas
-        scroll.magnification = scale
-        scroll.backgroundColor = .underPageBackgroundColor
-        content.addSubview(scroll)
+        // Lienzo escalado al tamaño que cabe, centrado horizontalmente (si la barra fuerza más ancho).
+        canvas.frame = NSRect(x: ((contentW - viewW) / 2).rounded(), y: 0, width: viewW, height: viewH)
+        canvas.autoresizingMask = [.minXMargin, .maxXMargin]
+        content.addSubview(canvas)
 
         let toolbar = buildToolbar(width: contentW)
         toolbar.frame = NSRect(x: 0, y: contentH - 52, width: contentW, height: 52)

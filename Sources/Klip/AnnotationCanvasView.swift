@@ -128,7 +128,9 @@ final class AnnotationCanvasView: NSView, NSTextFieldDelegate {
     override func mouseUp(with event: NSEvent) {
         if movingTextID != nil { movingTextID = nil; return }
         guard let d = draft else { return }
-        if d.points.count > 1 || d.tool == .pencil || d.tool == .marker {
+        // Solo se añade si hubo arrastre real (2+ puntos). Un clic suelto con lápiz/marcador NO crea un
+        // trazo de 1 punto invisible (que ensuciaría annotations/undo y dejaría una selección vacía).
+        if d.points.count > 1 {
             annotations.append(d)
             redoStack.removeAll(); clearedBackup = nil   // una acción nueva invalida rehacer/limpiar
             selectedID = d.id            // auto-seleccionar la forma recién dibujada (para recolorear/mover)
@@ -191,9 +193,15 @@ final class AnnotationCanvasView: NSView, NSTextFieldDelegate {
         let font = field.font ?? NSFont.systemFont(ofSize: editFontSize, weight: .semibold)
         let shown = field.stringValue.isEmpty ? (field.placeholderString ?? "") : field.stringValue
         let textW = (shown as NSString).size(withAttributes: [.font: font]).width
-        let maxW = max(120, bounds.width - field.frame.minX - 8)   // sin salirse del lienzo
+        let pad: CGFloat = 8
+        // Ancho deseado, sin exceder el ancho total del lienzo.
+        let desired = min(max(120, textW + 28), max(120, bounds.width - pad * 2))
         var f = field.frame
-        f.size.width = min(max(120, textW + 28), maxW)
+        // Si se saldría por la derecha (p.ej. el texto empezó cerca del borde), recolocar a la izquierda.
+        if f.minX + desired > bounds.width - pad {
+            f.origin.x = max(pad, bounds.width - pad - desired)
+        }
+        f.size.width = desired
         field.frame = f
     }
 

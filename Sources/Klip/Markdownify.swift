@@ -35,7 +35,9 @@ enum Markdownify {
     /// Best-effort language tag for a fenced code block (cheap heuristics). Returns "" when unsure —
     /// a wrong/empty tag still renders fine, it just helps the AI/editor highlight when we're confident.
     static func inferCodeLanguage(_ s: String) -> String {
-        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Inspect only a prefix: the language is detectable from the start, and this bounds the regex work
+        // (the SELECT…FROM alternative uses [\s\S]+, which could backtrack on a huge pasted blob).
+        let t = String(s.trimmingCharacters(in: .whitespacesAndNewlines).prefix(4000))
         let lower = t.lowercased()
         if (t.hasPrefix("{") || t.hasPrefix("[")), t.contains("\""), t.contains(":") { return "json" }
         if t.hasPrefix("#!"), lower.contains("sh") { return "bash" }

@@ -13,9 +13,9 @@ final class AnnotationCanvasView: NSView, NSTextFieldDelegate {
     private var editingID: UUID?              // anotación de texto que se está reeditando
     private var editFontSize: CGFloat = 20
     private var editColor: NSColor = .systemRed
-    var selectedID: UUID?                 // texto seleccionado (caja resaltada); lo toca también +Klip
-    private var movingTextID: UUID?           // texto que se está arrastrando
-    private var moveOffset = CGSize.zero
+    var selectedID: UUID?                 // anotación seleccionada (caja resaltada); lo toca también +Klip
+    private var movingID: UUID?               // anotación que se está arrastrando (cualquier forma o texto)
+    private var lastDragPoint = CGPoint.zero  // último punto del arrastre (para mover por delta)
 
     // Re-portado del editor anterior (Fase C del merge Snap): historial de rehacer y respaldo del
     // último "Limpiar todo". Son internal para que AnnotationCanvasView+Klip.swift los maneje.
@@ -82,8 +82,8 @@ final class AnnotationCanvasView: NSView, NSTextFieldDelegate {
                 } else {
                     // Clic simple → seleccionar y preparar arrastre.
                     selectedID = ann.id
-                    movingTextID = ann.id
-                    moveOffset = CGSize(width: p.x - ann.start.x, height: p.y - ann.start.y)
+                    movingID = ann.id
+                    lastDragPoint = p
                     onSelectionChange?()
                 }
                 needsDisplay = true
@@ -98,19 +98,43 @@ final class AnnotationCanvasView: NSView, NSTextFieldDelegate {
         }
 
         // Herramientas de dibujo.
+        commitActiveText()
+        // ¿Presionaste sobre una anotación existente? → seleccionarla y prepararla para ARRASTRAR (mover),
+        // en vez de empezar a dibujar una nueva encima. Sin esto, intentar mover una forma dibujaba otra.
+        if let idx = hitAnnotationIndex(at: p) {
+            selectedID = annotations[idx].id
+            movingID = annotations[idx].id
+            lastDragPoint = p
+            onSelectionChange?()
+            needsDisplay = true
+            return
+        }
+        // Espacio vacío → nueva forma.
         selectedID = nil
         onSelectionChange?()
-        commitActiveText()
         draft = Annotation(tool: currentTool, color: currentColor,
                            lineWidth: currentLineWidth, points: [p], text: nil)
+    }
+
+    /// Índice de la anotación bajo el punto (cualquier forma o texto), para seleccionar/arrastrar.
+    /// Prioriza la selección actual si el punto cae dentro de ella; si no, la de más arriba.
+    private func hitAnnotationIndex(at p: CGPoint) -> Int? {
+        if let id = selectedID, let idx = annotations.firstIndex(where: { $0.id == id }),
+           annotations[idx].selectionBounds()?.contains(p) ?? false {
+            return idx
+        }
+        return annotations.lastIndex(where: { $0.selectionBounds()?.contains(p) ?? false })
     }
 
     override func mouseDragged(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
 
-        // Mover un texto seleccionado.
-        if let movingID = movingTextID, let idx = annotations.firstIndex(where: { $0.id == movingID }) {
-            annotations[idx].points = [CGPoint(x: p.x - moveOffset.width, y: p.y - moveOffset.height)]
+        // Mover la anotación seleccionada (cualquier forma o texto): desplaza TODOS sus puntos por el
+        // delta del arrastre, así un rectángulo/flecha/elipse/trazo se mueve sin deformarse.
+        if let id = movingID, let idx = annotations.firstIndex(where: { $0.id == id }) {
+            let dx = p.x - lastDragPoint.x, dy = p.y - lastDragPoint.y
+            annotations[idx].points = annotations[idx].points.map { CGPoint(x: $0.x + dx, y: $0.y + dy) }
+            lastDragPoint = p
             needsDisplay = true
             return
         }
@@ -126,7 +150,7 @@ final class AnnotationCanvasView: NSView, NSTextFieldDelegate {
     }
 
     override func mouseUp(with event: NSEvent) {
-        if movingTextID != nil { movingTextID = nil; return }
+        if movingID != nil { movingID = nil; needsDisplay = true; return }
         guard let d = draft else { return }
         // Solo se añade si hubo arrastre real (2+ puntos). Un clic suelto con lápiz/marcador NO crea un
         // trazo de 1 punto invisible (que ensuciaría annotations/undo y dejaría una selección vacía).

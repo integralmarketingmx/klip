@@ -37,7 +37,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panelController = PanelController(manager: manager, statusItem: statusItem)
         panelController.onOpenPreferences = { [weak self] in self?.openPreferences() }
         snapController = SnapController(manager: manager)
-        snapController.onCaptured = { [weak self] in self?.panelController.show() }
+        // Auto-revelado tras capturar/copiar: mostrar el historial SIN robar el foco, para no
+        // interrumpir lo que el usuario esté escribiendo o pegando en otra ventana.
+        snapController.onCaptured = { [weak self] in self?.panelController.show(activating: false) }
         snapController.onRequestEmail = { [weak self] image in self?.panelController.composeEmailWithImage(image) }
         panelController.onCaptureAnnotate = { [weak self] in self?.snapController.start() }
         manager.start()

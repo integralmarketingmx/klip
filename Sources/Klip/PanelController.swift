@@ -132,14 +132,21 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     func toggle() { panel.isVisible ? hide() : show() }
 
-    func show() {
+    /// `activating: false` revela el panel SIN activar la app ni robar el foco del teclado: se usa
+    /// en el auto-revelado tras copiar/capturar, para no interrumpir lo que el usuario esté
+    /// escribiendo o pegando en otra ventana (el panel aparece flotando; si lo toca, se vuelve key).
+    func show(activating: Bool = true) {
         guard !panel.isVisible else { return }   // idempotente: evita reinstalar monitores
         previousApp = NSWorkspace.shared.frontmostApplication
         positionPanel()
 
         panel.alphaValue = 0
-        NSApp.activate(ignoringOtherApps: true)
-        panel.makeKeyAndOrderFront(nil)
+        if activating {
+            NSApp.activate(ignoringOtherApps: true)
+            panel.makeKeyAndOrderFront(nil)
+        } else {
+            panel.orderFrontRegardless()   // visible por encima de todo, pero sin tomar el foco
+        }
         selection.reset()
         selection.openToken &+= 1                 // dispara reseteo de búsqueda/foco en la vista
         if recordingPanel?.isVisible != true { recorder.reset() }  // no cerrar el popup de voz si está abierto

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Klip · subir y copiar link</title>
+<style>
+  body { margin:0; font:13px -apple-system,system-ui,sans-serif; background:#20222a; color:#e9e9ee;
+         min-height:100vh; padding:32px; display:flex; flex-direction:column; gap:26px; align-items:center; }
+  h1 { font-size:16px; margin:0; } .sub { color:#9aa0a8; font-size:12.5px; max-width:560px; text-align:center; line-height:1.5; }
+  .panel { width:430px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08);
+           border-radius:12px; overflow:hidden; }
+  .row { display:flex; align-items:center; gap:10px; padding:10px 12px; border-bottom:1px solid rgba(255,255,255,.05); }
+  .thumb { width:46px; height:34px; border-radius:5px; background:linear-gradient(120deg,#5b8def,#7a5cf0); flex:0 0 auto; }
+  .meta { flex:1; min-width:0; } .meta .t { font-weight:600; } .meta .d { color:#8b919b; font-size:11px; }
+  .acts { display:flex; gap:3px; align-items:center; }
+  .ic { width:26px; height:26px; border-radius:6px; display:flex; align-items:center; justify-content:center;
+        color:#c6ccd6; font-size:13px; }
+  .ic:hover { background:rgba(255,255,255,.09); }
+  .ic.hi { color:#5b8def; } .ic.ok { color:#43d17a; }
+  .spin { width:13px; height:13px; border:2px solid rgba(255,255,255,.25); border-top-color:#5b8def;
+          border-radius:50%; animation:s .7s linear infinite; } @keyframes s { to { transform:rotate(360deg) } }
+  .toast { display:flex; align-items:center; gap:8px; background:rgba(20,22,28,.9); border:1px solid rgba(67,209,122,.4);
+           border-radius:9px; padding:8px 12px; font-size:12.5px; }
+  .toast .lnk { font-family:ui-monospace,monospace; color:#7fb0ff; font-size:11.5px; }
+  .label { font-size:11px; color:#8b919b; text-transform:uppercase; letter-spacing:.5px; align-self:flex-start; }
+  .pref { width:430px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:14px; }
+  .pref label { display:block; font-weight:600; margin-bottom:6px; }
+  .pref input { width:100%; box-sizing:border-box; background:#15171d; border:1px solid rgba(255,255,255,.12);
+                border-radius:7px; padding:7px 9px; color:#e9e9ee; font-family:ui-monospace,monospace; font-size:12px; }
+  .pref .hint { color:#8b919b; font-size:11px; margin-top:6px; }
+  legend { color:#aab0b8; font-size:12px; }
+</style>
+</head>
+<body>
+  <h1>Subir captura y copiar link (estilo Lightshot)</h1>
+  <p class="sub">Nueva acción 🔗 en cada imagen del historial. Sube la imagen a tu VPS y copia el link al
+  portapapeles automáticamente. Los links se auto-purgan a los 3 días (etapa de pruebas).</p>
+
+  <div class="label">Fila de imagen — 3 estados</div>
+  <div class="panel">
+    <!-- idle -->
+    <div class="row">
+      <div class="thumb"></div>
+      <div class="meta"><div class="t">Imagen · 1280×720</div><div class="d">Hoy · 14:02</div></div>
+      <div class="acts">
+        <div class="ic">⧉</div><div class="ic">⤢</div><div class="ic">⤓</div><div class="ic">⌕</div>
+        <div class="ic hi" title="Subir y copiar link">🔗</div>
+        <div class="ic">✎</div><div class="ic">📌</div><div class="ic">🗑</div>
+      </div>
+    </div>
+    <!-- subiendo -->
+    <div class="row">
+      <div class="thumb"></div>
+      <div class="meta"><div class="t">Imagen · 1280×720</div><div class="d">Subiendo…</div></div>
+      <div class="acts">
+        <div class="ic">⧉</div><div class="ic">⤢</div><div class="ic">⤓</div><div class="ic">⌕</div>
+        <div class="ic"><div class="spin"></div></div>
+        <div class="ic">✎</div><div class="ic">📌</div><div class="ic">🗑</div>
+      </div>
+    </div>
+    <!-- listo -->
+    <div class="row">
+      <div class="thumb"></div>
+      <div class="meta"><div class="t">Imagen · 1280×720</div><div class="d">Hoy · 14:02</div></div>
+      <div class="acts">
+        <div class="ic">⧉</div><div class="ic">⤢</div><div class="ic">⤓</div><div class="ic">⌕</div>
+        <div class="ic ok" title="Link copiado">✓</div>
+        <div class="ic">✎</div><div class="ic">📌</div><div class="ic">🗑</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast">✓ Link copiado al portapapeles <span class="lnk">klip.p0wzj8.easypanel.host/LCXeEE.png</span></div>
+
+  <div class="label">Preferencias › Subida (configurable para pruebas)</div>
+  <div class="pref">
+    <label>Servidor de subida</label>
+    <input value="https://klip.p0wzj8.easypanel.host" />
+    <div class="hint">Endpoint POST /upload. Default: tu VPS de integralmarketing (auto-purga 3 días).</div>
+  </div>
+</body>
+</html>

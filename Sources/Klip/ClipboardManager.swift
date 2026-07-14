@@ -8,17 +8,26 @@ struct CaptureSource {
 }
 
 /// Monitorea el portapapeles, mantiene el historial y expone acciones.
-final class ClipboardManager: ObservableObject {
+/// @MainActor (Consejo C2): serializa el acceso al estado compartido (`items`, `lastChangeCount`)
+/// confinándolo al hilo principal; elimina data races con los timers y callbacks de transcripción.
+@MainActor
+final class ClipboardManager: ObservableObject, ClipboardStoring {
     @Published private(set) var items: [ClipboardItem] = []
 
     private var timer: Timer?
     private var lastChangeCount: Int
     private var maxItems: Int { Settings.shared.maxItems }
-    private let storage = Storage.shared
+    /// Persistencia inyectada (Consejo C4): por defecto el singleton, pero se puede sustituir por
+    /// un doble en pruebas. Es `let` (inmutable) para seguir siendo accesible desde `extractText`,
+    /// que es `nonisolated`.
+    private let storage: PersistentStoring
     private let settings = Settings.shared
     private let ownBundleID = Bundle.main.bundleIdentifier
 
-    init() {
+    /// Inyección por constructor: el store por defecto es `Storage.shared` para no romper a los
+    /// llamadores existentes (AppDelegate sigue usando `ClipboardManager()` sin argumentos).
+    init(storage: PersistentStoring = Storage.shared) {
+        self.storage = storage
         lastChangeCount = NSPasteboard.general.changeCount
         items = storage.loadItems()
         reconcileVoiceNotesOnLoad()
@@ -127,7 +136,10 @@ final class ClipboardManager: ObservableObject {
     private func addText(_ text: String, source: CaptureSource, remote: Bool) {
         if let idx = items.firstIndex(where: { $0.kind == .text && $0.isVoiceNote != true && $0.text == text }) {
             var item = items.remove(at: idx)
+            // Señal de frecuencia (C7): refresca createdAt, conserva/inicializa firstSeenAt e incrementa copyCount.
+            item.firstSeenAt = item.firstSeenAt ?? item.createdAt
             item.createdAt = Date()
+            item.copyCount += 1
             item.sourceName = source.name           // refrescar origen con la captura nueva
             item.sourceBundleID = source.bundleID
             item.isRemote = remote ? true : nil
@@ -147,8 +159,10 @@ final class ClipboardManager: ObservableObject {
 
     private func addImage(_ image: NSImage, source: CaptureSource, remote: Bool) {
         let fileName = "\(UUID().uuidString).png"
-        storage.saveImage(image, fileName: fileName)
-        let size = image.size
+        // Si el guardado en disco falla, NO insertamos el item: evitaría una referencia huérfana a
+        // un archivo inexistente (preferimos perder esta captura antes que corromper el historial).
+        guard storage.saveImage(image, fileName: fileName) != nil else { return }
+        let size = image.pixelDimensions
         let preview = "Imagen · \(Int(size.width))×\(Int(size.height))"
         items.insert(ClipboardItem(kind: .image, imageFileName: fileName, preview: preview,
                                    sourceName: source.name, sourceBundleID: source.bundleID,
@@ -160,10 +174,18 @@ final class ClipboardManager: ObservableObject {
     /// en el portapapeles. Análogo público a `addImage`, pero para imágenes generadas por la app
     /// (no capturadas del pasteboard). Queda disponible para OCR y búsqueda como cualquier imagen.
     @discardableResult
-    func addAnnotatedScreenshot(_ image: NSImage, copyToClipboard: Bool = true) -> UUID {
+    func addAnnotatedScreenshot(_ image: NSImage, copyToClipboard: Bool = true) -> UUID? {
         let fileName = "\(UUID().uuidString).png"
-        storage.saveImage(image, fileName: fileName)
-        let size = image.size
+        // Si el guardado falla, no insertamos el item (evita referencia huérfana). Aún así dejamos la
+        // imagen en el portapapeles si se pidió, para que el usuario al menos pueda pegarla.
+        guard storage.saveImage(image, fileName: fileName) != nil else {
+            if copyToClipboard {
+                let pb = NSPasteboard.general
+                pb.clearContents(); pb.writeObjects([image])
+            }
+            return nil
+        }
+        let size = image.pixelDimensions   // píxeles reales (no puntos): badge consistente en Retina
         let preview = "Captura · \(Int(size.width))×\(Int(size.height))"
         let item = ClipboardItem(kind: .image, imageFileName: fileName, preview: preview)
         items.insert(item, at: 0)
@@ -188,12 +210,17 @@ final class ClipboardManager: ObservableObject {
             .trimmingCharacters(in: .whitespaces)
     }
 
+    /// changeCount del portapapeles al empezar cada nota: solo auto-pegamos su transcripción si el
+    /// usuario NO copió nada distinto mientras transcribía (no pisar su portapapeles en 2º plano).
+    private var voicePasteGuards: [UUID: Int] = [:]
+
     /// Crea el elemento de la nota de voz con su audio (placeholder "Transcribiendo…") y devuelve su id.
     @discardableResult
     func beginVoiceNote(audioFileName: String?, duration: Double?) -> UUID {
         let item = ClipboardItem(kind: .text, preview: Self.voiceTranscribing,
                                  isVoiceNote: true, audioFileName: audioFileName, audioDuration: duration)
         items.insert(item, at: 0)
+        voicePasteGuards[item.id] = NSPasteboard.general.changeCount
         trimAndSave()
         return item.id
     }
@@ -203,29 +230,45 @@ final class ClipboardManager: ObservableObject {
         guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
         items[idx].text = nil
         items[idx].preview = Self.voiceTranscribing
+        // Re-registrar el guard de portapapeles: si no, un reintento exitoso nunca se auto-pegaría
+        // (removeValue daría nil → canPaste=false). El auto-pegado de reintentos quedaba muerto.
+        voicePasteGuards[id] = NSPasteboard.general.changeCount
         storage.saveItems(items)
     }
 
-    /// Rellena la transcripción y la deja en el portapapeles, lista para pegar.
+    /// Rellena la transcripción. Solo la deja en el portapapeles si el usuario NO copió otra cosa
+    /// mientras transcribía (evita pisar su portapapeles en segundo plano).
     func finishVoiceNote(id: UUID, text: String) {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let idx = items.firstIndex(where: { $0.id == id }) else {
-            if !clean.isEmpty { setClipboardText(clean) }   // el placeholder ya no existe: al menos no perder el texto
-            return
-        }
+        let canPaste = voicePasteGuards.removeValue(forKey: id).map { $0 == NSPasteboard.general.changeCount } ?? false
+        // Si ya no existe antes del trim, el usuario la borró (o se reemplazó al importar): no tocar
+        // su portapapeles con la transcripción de una nota que eliminó a propósito (core-7 de Martin).
+        guard items.contains(where: { $0.id == id }) else { return }
+        // Recorta PRIMERO, mientras la nota sigue marcada como "transcribiendo" y por tanto
+        // protegida del trim. Si cambiáramos el preview antes, una transcripción recién llegada
+        // podría perderse al recortar (deja de estar protegida). Tras el trim re-localizamos por id.
+        trimAndSave()
+        guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
         items[idx].text = clean.isEmpty ? nil : clean
         items[idx].preview = clean.isEmpty ? Self.voiceFailed : Self.voicePreview(clean)
         let item = items[idx]
-        trimAndSave()
-        if !clean.isEmpty { copyToPasteboard(item) }   // sin re-capturar (actualiza lastChangeCount)
+        storage.saveItems(items)
+        if !clean.isEmpty, canPaste { copyToPasteboard(item) }   // solo si nada cambió el portapapeles
     }
 
     /// La transcripción falló: deja el elemento visible (con audio reproducible si lo hay) en vez de
     /// borrarlo en silencio, para que el usuario sepa qué pasó y pueda recuperarlo o eliminarlo.
-    func failVoiceNote(id: UUID) {
+    func failVoiceNote(id: UUID, reason: String? = nil) {
+        voicePasteGuards.removeValue(forKey: id)
         guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
         items[idx].text = nil
-        items[idx].preview = items[idx].audioFileName != nil ? Self.voiceFailed : Self.voiceFailedNoAudio
+        // Muestra el motivo real (p. ej. "La clave de Gemini no es válida.") en vez de un genérico.
+        let fallback = items[idx].audioFileName != nil ? Self.voiceFailed : Self.voiceFailedNoAudio
+        if let reason, !reason.isEmpty {
+            items[idx].preview = "⚠️ \(reason)"
+        } else {
+            items[idx].preview = fallback
+        }
         storage.saveItems(items)
     }
 
@@ -235,20 +278,29 @@ final class ClipboardManager: ObservableObject {
     }
 
     private func trimAndSave() {
-        if items.count > maxItems {
-            let keep = items.filter { isProtectedFromTrim($0) }
-            var trimmable = items.filter { !isProtectedFromTrim($0) }
-            let allowed = max(0, maxItems - keep.count)
-            if trimmable.count > allowed {
-                for it in trimmable[allowed...] {
-                    if it.kind == .image, let f = it.imageFileName { storage.deleteImage(fileName: f) }
-                    if let af = it.audioFileName { AudioPlayer.shared.stopIfPlaying(af); storage.deleteAudio(fileName: af) }
-                }
-                trimmable = Array(trimmable.prefix(allowed))
-            }
-            items = (keep + trimmable).sorted { $0.createdAt > $1.createdAt }
+        guard items.count > maxItems else { storage.saveItems(items); return }
+
+        let keep = items.filter { isProtectedFromTrim($0) }
+        var trimmable = items.filter { !isProtectedFromTrim($0) }
+        let allowed = max(0, maxItems - keep.count)
+        var removed: [ClipboardItem] = []
+        if trimmable.count > allowed {
+            removed = Array(trimmable[allowed...])
+            trimmable = Array(trimmable.prefix(allowed))
         }
-        storage.saveItems(items)
+        let snapshot = items
+        items = (keep + trimmable).sorted { $0.createdAt > $1.createdAt }
+        // Persiste PRIMERO el historial recortado; solo si quedó en disco borramos los archivos de
+        // los elementos recortados. Si el guardado falla, revertimos y NO borramos nada (evita
+        // que items.json quede referenciando archivos ya borrados).
+        guard storage.saveItems(items) else {
+            items = snapshot
+            return
+        }
+        for it in removed {
+            if it.kind == .image, let f = it.imageFileName { storage.deleteImage(fileName: f) }
+            if let af = it.audioFileName { AudioPlayer.shared.stopIfPlaying(af); storage.deleteAudio(fileName: af) }
+        }
     }
 
     func applyMaxItems() { trimAndSave() }
@@ -275,16 +327,28 @@ final class ClipboardManager: ObservableObject {
         lastChangeCount = pb.changeCount   // evita re-capturar la salida de Markdown/OCR como item nuevo
     }
 
-    func extractText(from item: ClipboardItem) -> String? {
+    // nonisolated: el OCR es pesado y debe correr en segundo plano (no toca estado del actor, solo
+    // el item recibido y Storage, que es seguro para hilos).
+    nonisolated func extractText(from item: ClipboardItem) -> String? {
         guard item.kind == .image,
               let f = item.imageFileName,
               let img = storage.loadImage(fileName: f) else { return nil }
         return OCR.recognizeText(in: img)
     }
 
+    /// Guarda el texto reconocido por OCR en el propio item de imagen (queda buscable). Llamar en
+    /// el hilo principal tras correr el OCR en segundo plano. No pisa texto previo si el OCR vino vacío.
+    func setOCRText(_ text: String, for id: UUID) {
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, let idx = items.firstIndex(where: { $0.id == id }) else { return }
+        items[idx].text = clean
+        storage.saveItems(items)
+    }
+
     func delete(_ item: ClipboardItem) {
         if item.kind == .image, let f = item.imageFileName { storage.deleteImage(fileName: f) }
         if let af = item.audioFileName { AudioPlayer.shared.stopIfPlaying(af); storage.deleteAudio(fileName: af) }
+        voicePasteGuards.removeValue(forKey: item.id)
         items.removeAll { $0.id == item.id }
         storage.saveItems(items)
     }
@@ -295,14 +359,54 @@ final class ClipboardManager: ObservableObject {
         items = newItems
     }
 
+    /// Borra los elementos creados DESDE `cutoff` (los más recientes, estilo "borrar última hora").
+    /// Conserva los fijados. Devuelve cuántos borró.
+    @discardableResult
+    func clearSince(_ cutoff: Date) -> Int {
+        let toDelete = items.filter { !$0.pinned && $0.createdAt >= cutoff }
+        guard !toDelete.isEmpty else { return 0 }
+        AudioPlayer.shared.stop()
+
+        // Persiste PRIMERO el historial recortado; solo si el guardado quedó en disco borramos los
+        // archivos asociados. Así evitamos el estado inconsistente "items.json referencia archivos
+        // ya borrados" si el guardado fallara. Si falla, restauramos y no borramos nada.
+        let ids = Set(toDelete.map { $0.id })
+        let snapshot = items
+        items.removeAll { ids.contains($0.id) }
+        guard storage.saveItems(items) else {
+            items = snapshot   // rollback en memoria: el disco sigue intacto
+            return 0
+        }
+        for it in toDelete {
+            if it.kind == .image, let f = it.imageFileName { storage.deleteImage(fileName: f) }
+            if let af = it.audioFileName { AudioPlayer.shared.stopIfPlaying(af); storage.deleteAudio(fileName: af) }
+            voicePasteGuards.removeValue(forKey: it.id)
+        }
+        return toDelete.count
+    }
+
+    /// Cuántos elementos se borrarían desde `cutoff` (no fijados). Para confirmar antes de borrar.
+    func countSince(_ cutoff: Date) -> Int {
+        items.filter { !$0.pinned && $0.createdAt >= cutoff }.count
+    }
+
     func clearAll() {
         AudioPlayer.shared.stop()
-        for it in items {
+        // Persiste el historial vacío PRIMERO; solo si quedó en disco borramos los archivos.
+        // Si el guardado falla, revertimos en memoria y no borramos nada.
+        let snapshot = items
+        let guardsSnapshot = voicePasteGuards
+        voicePasteGuards.removeAll()
+        items.removeAll()
+        guard storage.saveItems(items) else {
+            items = snapshot
+            voicePasteGuards = guardsSnapshot
+            return
+        }
+        for it in snapshot {
             if it.kind == .image, let f = it.imageFileName { storage.deleteImage(fileName: f) }
             if let af = it.audioFileName { storage.deleteAudio(fileName: af) }
         }
-        items.removeAll()
-        storage.saveItems(items)
     }
 
     func togglePin(_ item: ClipboardItem) {
@@ -310,6 +414,39 @@ final class ClipboardManager: ObservableObject {
         items[idx].pinned.toggle()
         trimAndSave()   // re-evaluar el recorte al desfijar (puede exceder maxItems)
     }
+
+    // MARK: - Captura anotada y colecciones (vibe coders)
+
+    /// Copia una captura recién tomada al portapapeles SIN agregarla aún al historial, para que el
+    /// usuario pueda pegarla de inmediato (⌘V) sin tocar la miniatura. Suprime la re-captura del
+    /// monitor: si luego ignora la miniatura, `addCapturedImage` la guarda una sola vez.
+    func copyCapturedToClipboard(_ image: NSImage) {
+        let pb = NSPasteboard.general
+        pb.clearContents(); pb.writeObjects([image])
+        lastChangeCount = pb.changeCount
+    }
+
+    /// Añade una imagen (captura recién tomada) al historial como un elemento de imagen.
+    func addCapturedImage(_ image: NSImage, name: String? = nil) {
+        let fileName = "\(UUID().uuidString).png"
+        // Si el guardado falla, no insertamos el item (evita referencia huérfana en el historial).
+        guard storage.saveImage(image, fileName: fileName) != nil else { return }
+        let size = image.pixelDimensions
+        let preview = "Captura · \(Int(size.width))×\(Int(size.height))"
+        items.insert(ClipboardItem(kind: .image, imageFileName: fileName, preview: preview, name: name), at: 0)
+        trimAndSave()
+    }
+
+    /// Asigna (o quita, con nombre vacío) una colección a varios elementos.
+    func assignCollection(_ ids: Set<UUID>, to name: String?) {
+        let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = (trimmed?.isEmpty ?? true) ? nil : trimmed
+        for idx in items.indices where ids.contains(items[idx].id) { items[idx].collection = value }
+        storage.saveItems(items)
+    }
+
+    /// Nombres de colecciones existentes (para los filtros).
+    var collections: [String] { Array(Set(items.compactMap { $0.collection })).sorted() }
 
     /// Pone (o quita) la etiqueta/nombre de un elemento. El nombre es buscable y se muestra como título.
     func rename(_ item: ClipboardItem, to name: String) {

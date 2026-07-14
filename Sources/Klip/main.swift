@@ -1,8 +1,18 @@
 import AppKit
 
+// Prueba e2e headless: `--selftest` corre las verificaciones del código real y termina (no abre UI).
+// Siempre contra KLIP_DATA_DIR (dir aislado) para no tocar datos reales.
+if CommandLine.arguments.contains("--selftest") {
+    exit(SelfTest.run() ? 0 : 1)
+}
+
 // Punto de entrada. App accesoria (sin icono en el Dock); vive en la barra de menú.
-let app = NSApplication.shared
-let delegate = AppDelegate()
-app.delegate = delegate
-app.setActivationPolicy(ProcessInfo.processInfo.environment["KLIP_REGULAR"] == nil ? .accessory : .regular)
-app.run()
+// El arranque corre en el hilo principal: AppDelegate es @MainActor (Consejo C2), así que se
+// construye dentro de un contexto MainActor.
+MainActor.assumeIsolated {
+    let app = NSApplication.shared
+    let delegate = AppDelegate()
+    app.delegate = delegate
+    app.setActivationPolicy(ProcessInfo.processInfo.environment["KLIP_REGULAR"] == nil ? .accessory : .regular)
+    app.run()
+}

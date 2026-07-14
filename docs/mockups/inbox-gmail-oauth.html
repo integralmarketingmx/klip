@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Klip · Inbox + conectar Google</title>
+<style>
+  :root{ --bg:#f4f5f7; --card:#fff; --ink:#1d2230; --sub:#6b7280; --line:#e6e8ec;
+         --brand:#5b6cff; --brand2:#7a5cf0; --ok:#16a34a; --amber:#b7791f; --amberbg:#fdf6e7; --okbg:#16a34a18; }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#15171d; --card:#1d2129; --ink:#e9eaee; --sub:#9aa0ab; --line:#2a2f3a; --amberbg:#2a2310; }
+  }
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);
+    font:14px/1.5 -apple-system,system-ui,sans-serif;display:flex;flex-wrap:wrap;gap:22px;justify-content:center;padding:28px 16px}
+  .logo{display:flex;align-items:center;gap:8px;font-weight:700}.logo img{width:24px;height:24px;border-radius:6px}
+  .pill{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:2px 8px;border-radius:6px}
+  .pill.b{background:var(--amberbg);color:var(--amber)} .pill.g{background:var(--okbg);color:var(--ok)}
+  .col{width:380px;max-width:100%}
+  h2{font-size:13px;color:var(--sub);text-transform:uppercase;letter-spacing:.6px;margin:0 0 10px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  /* connect */
+  .connect{padding:22px 18px;text-align:center}
+  .connect .gicon{width:54px;height:54px;border-radius:14px;background:var(--bg);border:1px solid var(--line);
+    display:flex;align-items:center;justify-content:center;font-size:26px;margin:0 auto 12px}
+  .gbtn{display:inline-flex;align-items:center;gap:9px;background:#fff;color:#3c4043;border:1px solid #dadce0;
+    border-radius:10px;padding:10px 16px;font-weight:600;font-size:13.5px;cursor:pointer;margin-top:6px}
+  .scopes{text-align:left;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:14px;font-size:12.5px}
+  .scopes div{display:flex;gap:8px;padding:3px 0} .scopes .ok{color:var(--ok)}
+  .muted{color:var(--sub);font-size:11.5px}
+  /* inbox */
+  .ihead{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line)}
+  .ihead .spacer{flex:1} .conn{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ok)}
+  .thread{display:flex;gap:11px;padding:12px 14px;border-bottom:1px solid var(--line);cursor:pointer}
+  .thread:hover{background:var(--bg)}
+  .thumb{width:54px;height:40px;border-radius:7px;background:linear-gradient(120deg,#2b3350,#0f1424);flex:0 0 auto}
+  .thumb.audio{display:flex;align-items:center;justify-content:center;color:#cfd6ff;font-size:18px}
+  .tmain{flex:1;min-width:0}
+  .trow{display:flex;align-items:center;gap:6px}
+  .who{font-weight:700;font-size:13.5px} .when{margin-left:auto;color:var(--sub);font-size:11.5px}
+  .snippet{color:var(--sub);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tags{display:flex;gap:6px;margin-top:4px;flex-wrap:wrap}
+  .tag{font-size:10.5px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:1px 7px;color:var(--sub)}
+  .tag.det{background:var(--okbg);color:var(--ok);border-color:transparent}
+  .unread{width:8px;height:8px;border-radius:50%;background:var(--brand);flex:0 0 auto;align-self:center}
+  .ifoot{padding:9px 14px;font-size:11.5px;color:var(--sub);background:var(--bg)}
+</style>
+</head>
+<body>
+
+<!-- CONECTAR GOOGLE -->
+<div class="col">
+  <h2>Conectar tu correo <span class="pill b">con Martin (app OAuth)</span></h2>
+  <div class="card connect">
+    <div class="gicon">📧</div>
+    <div style="font-weight:700;font-size:15px">Envía y recibe desde tu propio correo</div>
+    <p class="muted" style="max-width:300px;margin:8px auto 0">Klip usa tu cuenta de Google para enviar las capturas y detectar las respuestas en tu bandeja.</p>
+    <button class="gbtn">🔵 Continuar con Google</button>
+    <div class="scopes">
+      <div><span class="ok">✓</span> Enviar correo en tu nombre <span class="muted">(gmail.send)</span></div>
+      <div><span class="ok">✓</span> Leer SOLO la etiqueta "Klip" <span class="muted">(respuestas, no todo tu correo)</span></div>
+      <div class="muted" style="margin-top:6px">También: SMTP manual (otro proveedor) con contraseña de aplicación.</div>
+    </div>
+  </div>
+</div>
+
+<!-- INBOX -->
+<div class="col">
+  <h2>Inbox de Klip <span class="pill g">detecta respuestas</span></h2>
+  <div class="card">
+    <div class="ihead">
+      <div class="logo"><img src="../../Resources/AppIcon.png" alt="Klip"> Inbox</div>
+      <span class="spacer"></span>
+      <span class="conn">🟢 miguel@gmail.com</span>
+    </div>
+
+    <!-- respuesta de otro Klip user -->
+    <div class="thread">
+      <div class="thumb"></div>
+      <div class="tmain">
+        <div class="trow"><span class="who">Ana (otro Klip user)</span><span class="when">hace 4 min</span></div>
+        <div class="snippet">Ya lo vi, el botón se encima en mobile — te marqué dónde 👆</div>
+        <div class="tags"><span class="tag det">✓ detectado · klip#a1b2c3</span><span class="tag">captura de login</span><span class="tag">anotó la imagen</span></div>
+      </div>
+      <span class="unread"></span>
+    </div>
+
+    <!-- respuesta a una nota de voz -->
+    <div class="thread">
+      <div class="thumb audio">🎙</div>
+      <div class="tmain">
+        <div class="trow"><span class="who">soporte@empresa.com</span><span class="when">hace 1 h</span></div>
+        <div class="snippet">Recibido el audio, lo paso a backend. ¿Tienes el log?</div>
+        <div class="tags"><span class="tag det">✓ detectado · +klip-9f7d</span><span class="tag">nota de voz 0:42</span></div>
+      </div>
+      <span class="unread"></span>
+    </div>
+
+    <!-- hilo ya leído -->
+    <div class="thread">
+      <div class="thumb"></div>
+      <div class="tmain">
+        <div class="trow"><span class="who">cliente@dominio.com</span><span class="when">ayer</span></div>
+        <div class="snippet">Perfecto, aprobado ✅</div>
+        <div class="tags"><span class="tag det">✓ detectado · klip#77ee</span><span class="tag">resuelto</span></div>
+      </div>
+    </div>
+
+    <div class="ifoot">Klip solo lee los correos con su marca (header <b>X-Klip-Thread</b> / etiqueta / plus-address). No toca el resto de tu bandeja.</div>
+  </div>
+</div>
+
+</body>
+</html>

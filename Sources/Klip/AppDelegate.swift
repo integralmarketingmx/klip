@@ -3,6 +3,7 @@ import Carbon.HIToolbox
 import Combine
 import UniformTypeIdentifiers
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private let recentsMenu = NSMenu()
@@ -11,7 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }()
     private let manager = ClipboardManager()
     private var panelController: PanelController!
-    private var snapController: SnapController!
+    private var snapController: SnapController!   // captura + editor Snap (arquitectura de Martin)
     private var hotKey: HotKey?
     private var voiceHotKey: HotKey?
     private var captureHotKey: HotKey?
@@ -25,20 +26,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            let cfg = NSImage.SymbolConfiguration(pointSize: 16, weight: .regular)
-            button.image = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "Klip")?
-                .withSymbolConfiguration(cfg)
+            // Símbolo de plantilla SIN forzar pointSize: la barra de menú lo dimensiona a su altura con
+            // el padding correcto. Forzar 16pt lo hacía demasiado alto y se recortaba arriba/abajo.
+            let img = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: "Klip")
+            img?.isTemplate = true
+            button.image = img
         }
         installMainMenu()
         buildMenu()
         panelController = PanelController(manager: manager, statusItem: statusItem)
         panelController.onOpenPreferences = { [weak self] in self?.openPreferences() }
         snapController = SnapController(manager: manager)
-        snapController.onCaptured = { [weak self] in self?.panelController.show() }
+        // Auto-revelado tras capturar/copiar: mostrar el historial SIN robar el foco, para no
+        // interrumpir lo que el usuario esté escribiendo o pegando en otra ventana.
+        snapController.onCaptured = { [weak self] in self?.panelController.show(activating: false) }
+        snapController.onRequestEmail = { [weak self] image in self?.panelController.composeEmailWithImage(image) }
+        panelController.onCaptureAnnotate = { [weak self] in self?.snapController.start() }
         manager.start()
+        // Si "reemplazar ⌘⇧4" está activo: re-asegura el atajo del sistema desactivado y re-afirma ⌘⇧4
+        // como combo de Klip (por si un fallback previo lo revirtió a ⌘⇧2).
+        if Settings.shared.overrideSystemCapture {
+            SystemShortcuts.setMacScreenshotAreaEnabled(false)
+            Settings.shared.captureCombo = .cmdShift4Combo
+        }
         setupHotKeys()
+        verifyCmd4IfPending()
         maybeEnableLoginOnce()
         Settings.shared.$uiLanguage.dropFirst().sink { [weak self] _ in self?.buildMenu() }.store(in: &cancellables)
+        // Aviso NO-modal cuando el guardado del historial falla repetidamente (Consejo C6).
+        NotificationCenter.default.addObserver(self, selector: #selector(handlePersistenceFailure(_:)),
+                                               name: Storage.persistenceFailureNotification, object: nil)
+    }
+
+    /// Muestra una advertencia no-bloqueante (ventana flotante) cuando Klip no logra guardar el
+    /// historial en disco tras varios reintentos. No usa runModal para no congelar la interacción.
+    private var persistenceWarningShown = false
+    @objc private func handlePersistenceFailure(_ note: Notification) {
+        guard !persistenceWarningShown else { return }   // un solo aviso por sesión
+        persistenceWarningShown = true
+        let info = (note.userInfo?["message"] as? String) ?? ""
+        let a = NSAlert()
+        a.alertStyle = .warning
+        a.messageText = "Klip no pudo guardar el historial"
+        a.informativeText = "Hubo fallos repetidos al escribir en disco. Revisa el espacio libre o los permisos."
+            + (info.isEmpty ? "" : "\n\n(\(info))")
+        let ok = a.addButton(withTitle: "OK")
+        ok.target = self
+        ok.action = #selector(dismissPersistenceWarning)
+        NSApp.activate(ignoringOtherApps: true)
+        // Ventana flotante presentada SIN runModal: no bloquea el resto de la app.
+        persistenceAlertWindow = a.window
+        a.window.level = .floating
+        a.window.center()
+        a.window.makeKeyAndOrderFront(nil)
+    }
+
+    private var persistenceAlertWindow: NSWindow?
+    @objc private func dismissPersistenceWarning() {
+        persistenceAlertWindow?.orderOut(nil)
+        persistenceAlertWindow = nil
+        persistenceWarningShown = false   // permite avisar de nuevo si vuelve a fallar más tarde
     }
 
     // Una app accesoria (.accessory) no tiene menú principal, así que los campos de texto de
@@ -73,10 +120,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                      action: #selector(showPanel), keyEquivalent: "")
         menu.addItem(withTitle: "\(L10n.t("rec.record"))   \(Settings.shared.voiceCombo.displayString)",
                      action: #selector(startVoice), keyEquivalent: "")
+        // Captura + anotación (editor Snap unificado).
         menu.addItem(withTitle: "\(L10n.t("menu.capture"))   \(Settings.shared.captureCombo.displayString)",
                      action: #selector(startCapture), keyEquivalent: "")
+        // Captura de pantalla completa directa (sin selección de región): abre el editor con todo el display.
+        menu.addItem(withTitle: L10n.t("capture.full"), action: #selector(startCaptureFull), keyEquivalent: "")
         menu.addItem(.separator())
-        let recents = NSMenuItem(title: "Recientes", action: nil, keyEquivalent: "")
+        let recents = NSMenuItem(title: L10n.t("menu.recents"), action: nil, keyEquivalent: "")
         recentsMenu.delegate = self
         recents.submenu = recentsMenu
         menu.addItem(recents)
@@ -92,52 +142,121 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(withTitle: L10n.t("menu.export"), action: #selector(exportBackup), keyEquivalent: "")
         menu.addItem(withTitle: L10n.t("menu.import"), action: #selector(importBackup), keyEquivalent: "")
-        menu.addItem(withTitle: L10n.t("menu.clear"), action: #selector(clearAll), keyEquivalent: "")
+        // Submenú "Borrar historial" por rango de tiempo (borra lo más reciente; conserva los fijados).
+        let clearItem = NSMenuItem(title: L10n.t("menu.clear"), action: nil, keyEquivalent: "")
+        let clearMenu = NSMenu()
+        let ranges: [(String, Int)] = [
+            ("Última hora", 3600),
+            ("Último día", 86_400),
+            ("Última semana", 604_800),
+            ("Último mes", 2_592_000),
+            ("Todo", 0)
+        ]
+        for (title, secs) in ranges {
+            if secs == 0 { clearMenu.addItem(.separator()) }
+            let it = clearMenu.addItem(withTitle: title, action: #selector(clearRange(_:)), keyEquivalent: "")
+            it.tag = secs
+            it.target = self
+        }
+        clearItem.submenu = clearMenu
+        menu.addItem(clearItem)
         menu.addItem(.separator())
         menu.addItem(withTitle: L10n.t("menu.quit"), action: #selector(quit), keyEquivalent: "q")
         menu.items.forEach { if $0.target == nil { $0.target = self } }
         statusItem.menu = menu
     }
 
-    private func setupHotKeys() {
-        let c = Settings.shared.combo
+    private func makePanelHotKey(_ c: KeyCombo) {
         hotKey = HotKey(keyCode: c.keyCode, modifiers: c.carbonModifiers, id: 1) { [weak self] in
             self?.panelController.toggle()
         }
-        let v = Settings.shared.voiceCombo
-        voiceHotKey = HotKey(keyCode: v.keyCode, modifiers: v.carbonModifiers, id: 2) { [weak self] in
+    }
+    private func makeVoiceHotKey(_ c: KeyCombo) {
+        voiceHotKey = HotKey(keyCode: c.keyCode, modifiers: c.carbonModifiers, id: 2) { [weak self] in
             self?.panelController.toggleVoiceRecording()
         }
-        let cap = Settings.shared.captureCombo
-        captureHotKey = HotKey(keyCode: cap.keyCode, modifiers: cap.carbonModifiers, id: 3) { [weak self] in
+    }
+    private func makeCaptureHotKey(_ c: KeyCombo) {
+        captureHotKey = HotKey(keyCode: c.keyCode, modifiers: c.carbonModifiers, id: 3) { [weak self] in
             self?.snapController.start()
         }
     }
 
-    private func applyHotKey(_ combo: KeyCombo) {
-        if hotKey?.reRegister(keyCode: combo.keyCode, modifiers: combo.carbonModifiers) == true {
-            lastGoodCombo = combo
-        } else {
-            NSSound.beep(); Settings.shared.combo = lastGoodCombo   // colisión: revertir
+    /// Hook que corre al arrancar (Klip inicia con la sesión): si quedó pendiente activar ⌘⇧4,
+    /// verifica si ya se registró (macOS lo soltó tras el re-login) y avisa el éxito una sola vez.
+    private func verifyCmd4IfPending() {
+        guard Settings.shared.pendingCmd4Verify, Settings.shared.overrideSystemCapture else { return }
+        // Éxito = el hotkey ⌘⇧4 se registró (captureHotKey != nil con el combo ⌘⇧4).
+        let success = captureHotKey != nil && Settings.shared.captureCombo == .cmdShift4Combo
+        guard success else { return }   // aún no: sigue pendiente, se reintenta el próximo arranque
+        Settings.shared.pendingCmd4Verify = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            alert.messageText = "⌘⇧4 listo ✓"
+            alert.informativeText = "Ahora ⌘⇧4 abre la captura de Klip en vez de la de macOS."
+            alert.addButton(withTitle: "OK")
+            NSApp.activate(ignoringOtherApps: true)
+            alert.runModal()
         }
+    }
+
+    private func setupHotKeys() {
+        makePanelHotKey(Settings.shared.combo)
+        makeVoiceHotKey(Settings.shared.voiceCombo)
+        makeCaptureHotKey(Settings.shared.captureCombo)
+        // Si una combinación persistida colisiona con otra al arrancar (HotKey.init devuelve nil), el
+        // atajo quedaría muerto toda la sesión. Recuperar con su atajo por defecto para no perderlo.
+        if hotKey == nil, Settings.shared.combo != .defaultCombo {
+            Settings.shared.combo = .defaultCombo; lastGoodCombo = .defaultCombo; makePanelHotKey(.defaultCombo)
+        }
+        if voiceHotKey == nil, Settings.shared.voiceCombo != .defaultVoiceCombo {
+            Settings.shared.voiceCombo = .defaultVoiceCombo; lastGoodVoiceCombo = .defaultVoiceCombo; makeVoiceHotKey(.defaultVoiceCombo)
+        }
+        // No revertir a ⌘⇧2 si el usuario activó "reemplazar ⌘⇧4": ese combo (⌘⇧4) puede fallar al
+        // registrarse hasta que macOS suelte el atajo (tras cerrar sesión). Conservarlo.
+        if captureHotKey == nil, Settings.shared.captureCombo != .defaultCaptureCombo,
+           !Settings.shared.overrideSystemCapture {
+            Settings.shared.captureCombo = .defaultCaptureCombo; lastGoodCaptureCombo = .defaultCaptureCombo; makeCaptureHotKey(.defaultCaptureCombo)
+        }
+        // Si incluso el atajo de captura por defecto (⌘⇧U) colisiona (p. ej. otra app ya lo tomó),
+        // probar las combinaciones sugeridas para no dejar la captura inerte sin que el usuario lo sepa.
+        if captureHotKey == nil {
+            for s in KeyCombo.suggestions where s != Settings.shared.combo && s != Settings.shared.voiceCombo {
+                makeCaptureHotKey(s)
+                if captureHotKey != nil {
+                    Settings.shared.captureCombo = s; lastGoodCaptureCombo = s
+                    showAlert(L10n.t("hotkey.capture.changed.title"), L10n.t("hotkey.capture.changed.info"))
+                    break
+                }
+            }
+        }
+    }
+
+    private func applyCaptureHotKey(_ combo: KeyCombo) {
+        let ok: Bool
+        if captureHotKey == nil { makeCaptureHotKey(combo); ok = (captureHotKey != nil) }   // estaba muerto: re-crear
+        else { ok = captureHotKey?.reRegister(keyCode: combo.keyCode, modifiers: combo.carbonModifiers) == true }
+        if ok { lastGoodCaptureCombo = combo }
+        else { NSSound.beep(); showAlert(L10n.t("act.prefs"), L10n.t("hotkey.inuse")); Settings.shared.captureCombo = lastGoodCaptureCombo }
+        buildMenu()
+    }
+
+    private func applyHotKey(_ combo: KeyCombo) {
+        let ok: Bool
+        if hotKey == nil { makePanelHotKey(combo); ok = (hotKey != nil) }
+        else { ok = hotKey?.reRegister(keyCode: combo.keyCode, modifiers: combo.carbonModifiers) == true }
+        if ok { lastGoodCombo = combo }
+        else { NSSound.beep(); showAlert(L10n.t("act.prefs"), L10n.t("hotkey.inuse")); Settings.shared.combo = lastGoodCombo }   // colisión: revertir
         buildMenu()
     }
 
     private func applyVoiceHotKey(_ combo: KeyCombo) {
-        if voiceHotKey?.reRegister(keyCode: combo.keyCode, modifiers: combo.carbonModifiers) == true {
-            lastGoodVoiceCombo = combo
-        } else {
-            NSSound.beep(); Settings.shared.voiceCombo = lastGoodVoiceCombo
-        }
-        buildMenu()
-    }
-
-    private func applyCaptureHotKey(_ combo: KeyCombo) {
-        if captureHotKey?.reRegister(keyCode: combo.keyCode, modifiers: combo.carbonModifiers) == true {
-            lastGoodCaptureCombo = combo
-        } else {
-            NSSound.beep(); Settings.shared.captureCombo = lastGoodCaptureCombo
-        }
+        let ok: Bool
+        if voiceHotKey == nil { makeVoiceHotKey(combo); ok = (voiceHotKey != nil) }
+        else { ok = voiceHotKey?.reRegister(keyCode: combo.keyCode, modifiers: combo.carbonModifiers) == true }
+        if ok { lastGoodVoiceCombo = combo }
+        else { NSSound.beep(); showAlert(L10n.t("act.prefs"), L10n.t("hotkey.inuse")); Settings.shared.voiceCombo = lastGoodVoiceCombo }
         buildMenu()
     }
 
@@ -155,7 +274,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.removeAllItems()
         let items = manager.items.sorted { $0.createdAt > $1.createdAt }.prefix(10)
         if items.isEmpty {
-            let empty = NSMenuItem(title: "Sin elementos", action: nil, keyEquivalent: "")
+            let empty = NSMenuItem(title: L10n.t("menu.empty"), action: nil, keyEquivalent: "")
             empty.isEnabled = false
             menu.addItem(empty)
             return
@@ -194,6 +313,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func showPanel() { panelController.show() }
     @objc private func startVoice() { panelController.toggleVoiceRecording() }
     @objc private func startCapture() { snapController.start() }
+    @objc private func startCaptureFull() { snapController.startFullScreen() }
     @objc private func showGuideMenu() { panelController.showGuide() }
 
     @objc private func openPreferences() {
@@ -214,7 +334,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .failure(let err):
             if case .requiresApproval = err { LoginItem.shared.openSystemSettings() }
             let alert = NSAlert()
-            alert.messageText = "Inicio automático"
+            alert.messageText = L10n.t("login.title")
             alert.informativeText = err.localizedDescription
             alert.runModal()
             launchItem?.state = LoginItem.shared.isEnabledOrPending ? .on : .off
@@ -241,6 +361,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         cancel.keyEquivalent = "\u{1b}"   // Esc cancela (no se asigna solo en español)
         NSApp.activate(ignoringOtherApps: true)
         if alert.runModal() == .alertFirstButtonReturn { manager.clearAll() }
+    }
+
+    /// Borra el historial por rango: tag = segundos hacia atrás (0 = todo). Conserva los fijados.
+    @objc private func clearRange(_ sender: NSMenuItem) {
+        let secs = sender.tag
+        let label = sender.title.lowercased()
+        let count = secs == 0 ? manager.items.count : manager.countSince(Date(timeIntervalSinceNow: -Double(secs)))
+        guard count > 0 else {
+            let none = NSAlert()
+            none.messageText = "Nada que borrar"
+            none.informativeText = "No hay elementos en ese rango (los fijados no se borran)."
+            none.addButton(withTitle: "OK")
+            NSApp.activate(ignoringOtherApps: true)
+            none.runModal()
+            return
+        }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = secs == 0 ? "¿Borrar todo el historial?" : "¿Borrar el historial de \(label)?"
+        alert.informativeText = "Se eliminarán \(count) elemento\(count == 1 ? "" : "s"). Los fijados se conservan. No se puede deshacer."
+        let del = alert.addButton(withTitle: "Borrar")
+        del.hasDestructiveAction = true
+        let cancel = alert.addButton(withTitle: L10n.t("common.cancel"))
+        cancel.keyEquivalent = "\u{1b}"
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        if secs == 0 { manager.clearAll() }
+        else { manager.clearSince(Date(timeIntervalSinceNow: -Double(secs))) }
     }
     @objc private func quit() { NSApp.terminate(nil) }
 

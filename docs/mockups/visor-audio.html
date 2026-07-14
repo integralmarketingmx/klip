@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Klip · visor de nota de voz</title>
+<style>
+  :root{ --bg:#f4f5f7; --card:#fff; --ink:#1d2230; --sub:#6b7280; --line:#e6e8ec;
+         --brand:#5b6cff; --brand2:#7a5cf0; --amber:#b7791f; --amberbg:#fdf6e7; }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#15171d; --card:#1d2129; --ink:#e9eaee; --sub:#9aa0ab; --line:#2a2f3a; --amberbg:#2a2310; }
+  }
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);
+    font:14px/1.5 -apple-system,system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;gap:20px;padding:30px 16px}
+  h1{font-size:17px;margin:0;text-align:center} .lead{color:var(--sub);font-size:13px;max-width:560px;text-align:center}
+  .logo{display:flex;align-items:center;gap:8px;font-weight:700;font-size:16px;justify-content:center}
+  .logo img{width:26px;height:26px;border-radius:7px}
+  .pill{display:inline-block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;
+    padding:2px 8px;border-radius:6px;background:var(--amberbg);color:var(--amber)}
+  .card{width:620px;max-width:100%;background:var(--card);border:1px solid var(--line);border-radius:14px;
+    box-shadow:0 14px 40px rgba(20,25,40,.12);overflow:hidden}
+  .chead{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line)}
+  .chead .spacer{flex:1} .expire{background:var(--amberbg);color:var(--amber);font-weight:600;font-size:12px;padding:4px 10px;border-radius:999px}
+  .body{padding:18px 16px}
+  /* player */
+  .player{display:flex;align-items:center;gap:12px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .play{width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,var(--brand),var(--brand2));
+    color:#fff;border:none;font-size:16px;cursor:pointer;flex:0 0 auto}
+  .wave{flex:1;height:34px;display:flex;align-items:center;gap:2px;overflow:hidden}
+  .wave i{display:block;width:3px;border-radius:2px;background:var(--brand);opacity:.55}
+  .time{font:12px ui-monospace,monospace;color:var(--sub)}
+  .pbtn{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:6px 9px;font-size:12px;cursor:pointer;color:var(--ink)}
+  /* transcripción */
+  .trans{margin-top:16px}
+  .trans .t{display:flex;align-items:center;gap:8px;font-weight:600;margin-bottom:6px}
+  .trans .t .pillg{font-size:10px;font-weight:700;background:#16a34a22;color:#16a34a;padding:1px 6px;border-radius:5px}
+  .trans pre{margin:0 0 10px;white-space:pre-wrap;font:13px/1.6 -apple-system,sans-serif;
+    background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px;max-height:180px;overflow:auto}
+  .actions{display:flex;flex-wrap:wrap;gap:8px}
+  .btn{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);background:var(--card);
+    color:var(--ink);font-weight:600;font-size:13px;padding:9px 13px;border-radius:10px;cursor:pointer}
+  .btn.brand{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;border:none}
+  .meta{color:var(--sub);font-size:12px;margin-top:12px}
+  /* email del audio */
+  .mailbox{width:620px;max-width:100%;border:1px dashed var(--line);border-radius:12px;padding:14px 16px;background:var(--card)}
+  .mailbox h3{margin:0 0 8px;font-size:13px}
+  .mailrow{display:flex;gap:9px;align-items:flex-start;font-size:13px;padding:5px 0;border-bottom:1px solid var(--line)}
+  .mailrow .k{width:90px;color:var(--sub);flex:0 0 auto}
+  .attach{display:inline-flex;align-items:center;gap:7px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:5px 9px;font-size:12px}
+</style>
+</head>
+<body>
+  <div>
+    <h1>Si el link es una NOTA DE VOZ</h1>
+    <p class="lead">Klip ya graba audio + lo transcribe. La página muestra un reproductor y la transcripción copiable. El email lleva el audio adjunto + la transcripción en el cuerpo + link a escuchar.</p>
+  </div>
+
+  <!-- PÁGINA WEB -->
+  <div class="card">
+    <div class="chead">
+      <div class="logo"><img src="../../Resources/AppIcon.png" alt="Klip"> Klip</div>
+      <span class="spacer"></span>
+      <span class="expire">⏱ Se borra en 2d 4h</span>
+    </div>
+    <div class="body">
+      <div class="player">
+        <button class="play">▶</button>
+        <div class="wave">
+          <!-- barras de onda decorativas -->
+          <i style="height:8px"></i><i style="height:18px"></i><i style="height:28px"></i><i style="height:14px"></i><i style="height:22px"></i><i style="height:30px"></i><i style="height:12px"></i><i style="height:20px"></i><i style="height:26px"></i><i style="height:10px"></i><i style="height:24px"></i><i style="height:16px"></i><i style="height:30px"></i><i style="height:9px"></i><i style="height:21px"></i><i style="height:27px"></i><i style="height:13px"></i><i style="height:19px"></i><i style="height:25px"></i><i style="height:11px"></i><i style="height:29px"></i><i style="height:15px"></i><i style="height:23px"></i><i style="height:17px"></i>
+        </div>
+        <span class="time">0:00 / 0:42</span>
+        <button class="pbtn">1×</button>
+        <button class="pbtn">⬇</button>
+      </div>
+
+      <div class="trans">
+        <div class="t">🎙 Transcripción <span class="pillg">auto</span></div>
+        <pre>Oye, el flujo de checkout falla cuando el carrito tiene más de diez items: el botón de pagar se queda cargando para siempre. Revísalo con el equipo de backend, parece timeout de la base de datos.</pre>
+        <div class="actions">
+          <button class="btn">⧉ Copiar transcripción</button>
+          <button class="btn">⬇ Descargar audio</button>
+          <button class="btn brand">✉ Enviar por email</button>
+          <button class="btn">🔗 Copiar link</button>
+        </div>
+      </div>
+      <div class="meta">m4a · 0:42 · 410 KB · subido hace 1h · se borra en 2d 4h</div>
+    </div>
+  </div>
+
+  <!-- CÓMO LLEGA EL EMAIL -->
+  <div class="mailbox">
+    <h3>📧 Cómo llega por email <span class="pill">Sprint 3 · con Martin (SMTP)</span></h3>
+    <div class="mailrow"><span class="k">Asunto</span><span>Nota de voz de Klip · 0:42</span></div>
+    <div class="mailrow"><span class="k">Cuerpo</span><span><b>Transcripción:</b> "Oye, el flujo de checkout falla cuando el carrito tiene más de diez items…" <br><span style="color:var(--sub)">+ tus notas escritas, si agregaste.</span></span></div>
+    <div class="mailrow"><span class="k">Botón</span><span>▶ Escuchar en el navegador (al reproductor web)</span></div>
+    <div class="mailrow" style="border-bottom:none"><span class="k">Adjuntos</span><span><span class="attach">🎵 nota-de-voz.m4a</span> <span class="attach">📄 transcripcion.txt</span></span></div>
+    <div class="meta">Los clientes de email no reproducen audio embebido → por eso va adjunto + transcrito + link a escuchar.</div>
+  </div>
+</body>
+</html>

@@ -6,7 +6,6 @@ enum AppInfo {
     static var version: String {
         (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0.4"
     }
-    /// ⚠️ Cambia esta URL por la de tu repositorio real cuando lo publiques.
-    static let repoURL = "https://github.com/proper/klip"
-    static let issuesURL = "https://github.com/proper/klip/issues"
+    static let repoURL = "https://github.com/tamibot/klip"
+    static let issuesURL = "https://github.com/tamibot/klip/issues"
 }

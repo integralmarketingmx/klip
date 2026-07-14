@@ -1,8 +1,11 @@
 import Foundation
 import AppKit
+import PDFKit
 
 /// Persistencia en disco: metadatos del historial (JSON), imágenes (PNG) y audio temporal (m4a).
-final class Storage {
+/// Conforma `PersistentStoring` (Consejo C4) para que los consumidores dependan del protocolo,
+/// no del singleton concreto. Toda la conformidad se cumple in-place: las firmas ya coincidían.
+final class Storage: PersistentStoring {
     static let shared = Storage()
 
     let baseURL: URL
@@ -12,6 +15,21 @@ final class Storage {
 
     init() {
         let fm = FileManager.default
+
+        // Override para pruebas (e2e): KLIP_DATA_DIR aísla TODO el almacén en un dir temporal, para
+        // no tocar el historial ni las API keys reales del usuario al correr `--selftest`.
+        if let override = ProcessInfo.processInfo.environment["KLIP_DATA_DIR"], !override.isEmpty {
+            let base = URL(fileURLWithPath: override, isDirectory: true)
+            baseURL = base
+            imagesURL = base.appendingPathComponent("images", isDirectory: true)
+            audioBaseURL = base.appendingPathComponent("audio", isDirectory: true)
+            itemsURL = base.appendingPathComponent("items.json")
+            try? fm.createDirectory(at: imagesURL, withIntermediateDirectories: true)
+            try? fm.createDirectory(at: audioBaseURL, withIntermediateDirectories: true)
+            Self.restrict(base.path, 0o700)
+            return
+        }
+
         let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? fm.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
 
@@ -19,9 +37,19 @@ final class Storage {
         let oldBase = appSupport.appendingPathComponent("PastaClip", isDirectory: true)
 
         // Migración: si existe la carpeta vieja y aún no la nueva, mover entera (rename atómico).
+        // Si el move falla (p. ej. cruza volúmenes), copiamos; pero si la COPIA falla a medias,
+        // borramos la copia parcial para reintentar en el próximo arranque y conservamos la vieja
+        // intacta como respaldo (no usar una carpeta nueva potencialmente corrupta).
         if fm.fileExists(atPath: oldBase.path), !fm.fileExists(atPath: newBase.path) {
-            do { try fm.moveItem(at: oldBase, to: newBase) }
-            catch { try? fm.copyItem(at: oldBase, to: newBase) }
+            do {
+                try fm.moveItem(at: oldBase, to: newBase)
+            } catch {
+                do {
+                    try fm.copyItem(at: oldBase, to: newBase)
+                } catch {
+                    try? fm.removeItem(at: newBase)   // limpia copia parcial → migra de nuevo luego
+                }
+            }
         }
 
         baseURL = newBase
@@ -55,14 +83,47 @@ final class Storage {
         return []
     }
 
-    func saveItems(_ items: [ClipboardItem]) {
+    /// Aviso (NotificationCenter) que dispara `saveItems` cuando el guardado falla repetidamente.
+    /// AppDelegate lo observa para mostrar una alerta NO-modal sin bloquear el flujo del usuario.
+    static let persistenceFailureNotification = Notification.Name("KlipPersistenceFailure")
+
+    /// Cuántos guardados han fallado "en racha" (se resetea al primer guardado exitoso).
+    private(set) var persistenceErrorCount = 0
+
+    /// Persiste el historial. NO lanza por fuera (firma estable para los llamadores), pero por dentro
+    /// reintenta con backoff corto. Si los 3 intentos fallan, incrementa `persistenceErrorCount` y, al
+    /// llegar a ≥3 fallos en racha, dispara un aviso no-modal (NotificationCenter) una sola vez.
+    @discardableResult
+    func saveItems(_ items: [ClipboardItem]) -> Bool {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.outputFormatting = [.prettyPrinted]
-        guard let data = try? encoder.encode(items) else { return }
-        try? data.write(to: itemsURL, options: .atomic)
-        // El historial puede contener credenciales en texto: restringir a solo el usuario.
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: itemsURL.path)
+        guard let data = try? encoder.encode(items) else { return false }
+
+        var lastError: Error?
+        for attempt in 0..<3 {
+            do {
+                try data.write(to: itemsURL, options: .atomic)
+                // El historial puede contener credenciales en texto: restringir a solo el usuario.
+                try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: itemsURL.path)
+                persistenceErrorCount = 0   // éxito: cortamos la racha
+                return true
+            } catch {
+                lastError = error
+                if attempt < 2 { Thread.sleep(forTimeInterval: 0.05 * Double(attempt + 1)) }   // backoff corto
+            }
+        }
+
+        // Todos los intentos fallaron: contabilizar y avisar (no-modal) si la racha llega a 3.
+        persistenceErrorCount += 1
+        if persistenceErrorCount == 3 {
+            let msg = lastError?.localizedDescription ?? "Error desconocido"
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: Self.persistenceFailureNotification,
+                                                object: nil, userInfo: ["message": msg])
+            }
+        }
+        return false
     }
 
     // MARK: - Imágenes
@@ -86,7 +147,7 @@ final class Storage {
     }
 
     private let imageCache: NSCache<NSString, NSImage> = {
-        let c = NSCache<NSString, NSImage>(); c.countLimit = 60; return c
+        let c = NSCache<NSString, NSImage>(); c.countLimit = 120; return c
     }()
 
     /// Imagen cacheada en memoria: evita releer/decodificar del disco en cada render de la lista.
@@ -97,7 +158,26 @@ final class Storage {
         return img
     }
 
+    /// Solo cache en memoria (sin tocar el disco): para mostrar al instante si ya está cargada,
+    /// y decidir en la vista si hay que cargarla en segundo plano.
+    func memoryCachedImage(fileName: String) -> NSImage? {
+        imageCache.object(forKey: fileName as NSString)
+    }
+
     func pngData(from image: NSImage) -> Data? {
+        // Si la imagen ya tiene un bitmap, codificar PNG directo desde el rep de mayor resolución
+        // (evita el round-trip por TIFF, que duplica memoria con capturas grandes).
+        if let rep = image.representations.compactMap({ $0 as? NSBitmapImageRep })
+            .max(by: { $0.pixelsWide < $1.pixelsWide }),
+           let png = rep.representation(using: .png, properties: [:]) {
+            return png
+        }
+        // Imagen respaldada por CGImage (p. ej. captura sin editar): codificar directo desde el CGImage
+        // preserva su color space/perfil ICC (Display P3) — evita el lavado del round-trip por TIFF.
+        if let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
+           let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) {
+            return png
+        }
         guard let tiff = image.tiffRepresentation,
               let rep = NSBitmapImageRep(data: tiff) else { return nil }
         return rep.representation(using: .png, properties: [:])
@@ -135,6 +215,9 @@ final class Storage {
         let fm = FileManager.default
         guard let names = try? fm.contentsOfDirectory(atPath: dir.path) else { return }
         for name in names where !keep.contains(name) {
+            // Log de cada huérfano borrado: si una corrupción parcial de items.json dejara
+            // referencias truncadas, esto deja rastro para diagnosticar una pérdida silenciosa.
+            NSLog("Klip: pruning huérfano %@/%@", dir.lastPathComponent, name)
             try? fm.removeItem(at: dir.appendingPathComponent(name))
         }
     }
@@ -197,10 +280,25 @@ final class Storage {
         }
 
         // Restaura un destino desde su respaldo (solo si el respaldo existe → original a salvo).
+        // Robustez: si el move falla, intenta copiar (no perder el original); si todo falla, NO
+        // silencia: deja el respaldo en su sitio y lo registra para recuperación manual.
         func restore(_ live: URL, _ bak: URL) {
             guard fm.fileExists(atPath: bak.path) else { return }   // sin bak: el live es el original intacto
-            try? fm.removeItem(at: live)
-            try? fm.moveItem(at: bak, to: live)
+            // Limpia el destino solo si existe; si la limpieza falla, lo registra (la causa raíz del
+            // posible fallo de move/copy posterior) en vez de silenciarla con try?.
+            if fm.fileExists(atPath: live.path) {
+                do { try fm.removeItem(at: live) }
+                catch { NSLog("Klip importBackup: no se pudo limpiar el destino \(live.lastPathComponent) antes de restaurar: \(error.localizedDescription)") }
+            }
+            do {
+                try fm.moveItem(at: bak, to: live)
+            } catch {
+                if (try? fm.copyItem(at: bak, to: live)) != nil {
+                    try? fm.removeItem(at: bak)
+                } else {
+                    NSLog("Klip importBackup: no se pudo restaurar \(live.lastPathComponent); respaldo conservado en \(bak.lastPathComponent)")
+                }
+            }
         }
 
         do {
@@ -222,11 +320,29 @@ final class Storage {
         }
 
         [bakItems, bakImages, bakAudio].forEach { try? fm.removeItem(at: $0) }   // éxito: limpiar respaldos
+
+        // Consistencia: descarta items que referencien archivos ausentes en la copia (ZIP parcial o
+        // corrupto), para no dejar el historial con miniaturas/audio rotos. Si se descartó algo,
+        // reescribe items.json con la lista consistente (el copiado trajo el original completo).
+        let consistent = decoded.filter { item in
+            if let img = item.imageFileName,
+               !fm.fileExists(atPath: imagesURL.appendingPathComponent(img).path) { return false }
+            if let af = item.audioFileName,
+               !fm.fileExists(atPath: audioBaseURL.appendingPathComponent(af).path) { return false }
+            return true
+        }
+        if consistent.count != decoded.count {
+            NSLog("Klip importBackup: %d de %d items descartados por archivos ausentes en la copia",
+                  decoded.count - consistent.count, decoded.count)
+            let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted]
+            if let d = try? enc.encode(consistent) { try? d.write(to: itemsURL, options: .atomic) }
+        }
+
         Self.restrict(itemsURL.path, 0o600)
         Self.restrict(imagesURL.path, 0o700)
         Self.restrict(audioBaseURL.path, 0o700)
         imageCache.removeAllObjects()
-        return decoded
+        return consistent
     }
 
     private static func err(_ msg: String) -> NSError {
@@ -254,5 +370,91 @@ final class Storage {
             throw NSError(domain: "Klip", code: Int(p.terminationStatus),
                           userInfo: [NSLocalizedDescriptionKey: "No se pudo comprimir/descomprimir (ditto \(p.terminationStatus))."])
         }
+    }
+
+    // MARK: - Combinar / exportar selección (vibe coders)
+
+    /// Combina varios elementos en un PDF (una página por elemento): imágenes como página de imagen,
+    /// textos como página de texto. Para subir varias capturas/notas de una sola vez a una IA.
+    /// Devuelve los datos y cuántas páginas se generaron (puede ser menos que items.count si algún
+    /// elemento no tenía contenido exportable). nil si no se pudo generar ninguna página.
+    func combinedPDF(from items: [ClipboardItem]) -> (data: Data, exported: Int)? {
+        let doc = PDFDocument()
+        var idx = 0
+        for it in items {
+            var pageImage: NSImage?
+            if it.kind == .image, let f = it.imageFileName { pageImage = loadImage(fileName: f) }
+            else if let t = it.text, !t.isEmpty { pageImage = Self.pageImage(forText: t) }
+            if let img = pageImage, let page = PDFPage(image: img) { doc.insert(page, at: idx); idx += 1 }
+        }
+        guard idx > 0, let data = doc.dataRepresentation() else { return nil }
+        return (data, idx)
+    }
+
+    /// Renderiza un texto en una "página" (imagen tamaño carta) con márgenes, para incrustar en el PDF.
+    /// Usa un drawingHandler (seguro fuera del hilo principal) en vez de lockFocus, ya que combinedPDF
+    /// se ejecuta en una cola de fondo.
+    private static func pageImage(forText text: String) -> NSImage {
+        let pageW: CGFloat = 612, margin: CGFloat = 40   // US Letter a 72 dpi
+        let style = NSMutableParagraphStyle(); style.lineSpacing = 3
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular),
+            .foregroundColor: NSColor.black, .paragraphStyle: style]
+        let textW = pageW - margin * 2
+        let bounds = (text as NSString).boundingRect(
+            with: NSSize(width: textW, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attrs)
+        let pageH = max(200, ceil(bounds.height) + margin * 2)
+        return NSImage(size: NSSize(width: pageW, height: pageH), flipped: false) { _ in
+            NSColor.white.setFill()
+            NSRect(x: 0, y: 0, width: pageW, height: pageH).fill()
+            (text as NSString).draw(with: NSRect(x: margin, y: margin, width: textW, height: pageH - margin * 2),
+                                    options: [.usesLineFragmentOrigin, .usesFontLeading], attributes: attrs)
+            return true
+        }
+    }
+
+    /// Cuántos de los elementos tienen contenido que exportar a ZIP (imagen en disco, audio, o texto).
+    func zipExportableCount(_ items: [ClipboardItem]) -> Int {
+        let fm = FileManager.default
+        return items.reduce(0) { acc, it in
+            if it.kind == .image, let f = it.imageFileName, fm.fileExists(atPath: imageURL(for: f).path) { return acc + 1 }
+            if let af = it.audioFileName, audioExists(fileName: af) { return acc + 1 }
+            if let t = it.text, !t.isEmpty { return acc + 1 }
+            return acc
+        }
+    }
+
+    /// Exporta los elementos seleccionados a un .zip (imágenes PNG, textos .txt, audios). Para subir el lote junto.
+    func exportItemsZip(_ items: [ClipboardItem], to dest: URL) throws {
+        let fm = FileManager.default
+        let work = fm.temporaryDirectory.appendingPathComponent("KlipSel-\(UUID().uuidString)", isDirectory: true)
+        let stage = work.appendingPathComponent("Klip", isDirectory: true)
+        try fm.createDirectory(at: stage, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: work) }
+        for (i, it) in items.enumerated() {
+            let n = String(format: "%02d", i + 1)
+            let base = (it.name?.isEmpty == false ? it.name! : "item").replacingOccurrences(of: "/", with: "-")
+            if it.kind == .image, let f = it.imageFileName, fm.fileExists(atPath: imageURL(for: f).path) {
+                try? fm.copyItem(at: imageURL(for: f), to: stage.appendingPathComponent("\(n)-\(base).png"))
+            } else if let af = it.audioFileName, audioExists(fileName: af) {
+                try? fm.copyItem(at: audioURL(for: af), to: stage.appendingPathComponent("\(n)-\(base).m4a"))
+                if let t = it.text, !t.isEmpty { try? t.data(using: .utf8)?.write(to: stage.appendingPathComponent("\(n)-\(base).txt")) }
+            } else if let t = it.text, !t.isEmpty {
+                try? t.data(using: .utf8)?.write(to: stage.appendingPathComponent("\(n)-\(base).txt"))
+            }
+        }
+        try? fm.removeItem(at: dest)
+        try Self.runDitto(["-c", "-k", "--keepParent", stage.path, dest.path])
+    }
+}
+
+extension NSImage {
+    /// Dimensiones REALES en píxeles (no en puntos): toma el rep de mayor resolución. En pantallas
+    /// retina, `size` viene en puntos (la mitad), así que esto es lo que el usuario espera ver.
+    var pixelDimensions: NSSize {
+        var w = 0, h = 0
+        for r in representations { w = max(w, r.pixelsWide); h = max(h, r.pixelsHigh) }
+        return (w > 0 && h > 0) ? NSSize(width: w, height: h) : size
     }
 }

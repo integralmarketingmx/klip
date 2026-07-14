@@ -2,6 +2,7 @@ import Foundation
 import AVFoundation
 import AppKit
 import Combine
+import CoreAudio
 
 enum RecorderState: Equatable {
     case idle
@@ -12,7 +13,9 @@ enum RecorderState: Equatable {
 
 /// Graba una nota de voz a .m4a y la transcribe con OpenAI (no en vivo: nota completa).
 /// La transcripción corre en segundo plano: al detener, el grabador queda libre para grabar otra.
-final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
+/// @MainActor (Consejo C2): confina el estado de grabación/transcripción al hilo principal.
+@MainActor
+final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate, AudioRecording {
     @Published private(set) var state: RecorderState = .idle
     @Published private(set) var duration: TimeInterval = 0
     @Published private(set) var level: Float = 0
@@ -27,7 +30,8 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     /// Rellena la transcripción en el elemento ya creado.
     var onVoiceNoteTranscribed: ((UUID, String) -> Void)?
     /// La transcripción falló o no hubo voz: el elemento queda con el audio para reproducir/recuperar.
-    var onVoiceNoteFailed: ((UUID) -> Void)?
+    /// El segundo parámetro lleva el motivo (clave inválida, red, etc.) o nil si solo fue "sin voz".
+    var onVoiceNoteFailed: ((UUID, TranscriptionError?) -> Void)?
     /// Reintento: marca un elemento existente como "Transcribiendo…" otra vez.
     var onVoiceNoteRetrying: ((UUID) -> Void)?
 
@@ -40,7 +44,19 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     private var recorder: AVAudioRecorder?
     private var meterTimer: Timer?
     private var currentFileName: String?
-    private let storage = Storage.shared
+    /// Persistencia inyectada (Consejo C4): por defecto el singleton; sustituible por un doble.
+    private let storage: PersistentStoring
+
+    /// Inyección por constructor con default para no romper a los llamadores (`Recorder()`).
+    init(storage: PersistentStoring = Storage.shared) {
+        self.storage = storage
+        super.init()
+    }
+    /// Listener de CoreAudio para detectar cambios del micrófono por defecto (p. ej. conectar audífonos).
+    /// nonisolated(unsafe): se muta en MainActor (install) y en deinit (nonisolated, al destruir).
+    /// El acceso va protegido por `deviceListenerLock` para ser correcto por construcción.
+    nonisolated(unsafe) private var deviceListener: AudioObjectPropertyListenerBlock?
+    private let deviceListenerLock = NSLock()
 
     /// Intención de grabar pendiente (cubre la ventana del permiso async).
     private var startRequested = false
@@ -93,6 +109,7 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
                 state = .recording
                 startRequested = false
                 startMeterTimer()
+                installDeviceListener()
             } catch {
                 state = .error(error.localizedDescription); startRequested = false
             }
@@ -105,6 +122,7 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         guard state == .recording, !finishing, let rec = recorder else { return }   // ignora doble-stop
         finishing = true
         stopMeterTimer()
+        removeDeviceListener()
         rec.stop()   // dispara audioRecorderDidFinishRecording
     }
 
@@ -113,12 +131,53 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         startRequested = false
         finishing = false
         stopMeterTimer()
+        removeDeviceListener()
         recorder?.delegate = nil   // evita que el delegate sobrescriba .idle con .error
         recorder?.stop()
         recorder = nil
         if let f = currentFileName { storage.deleteAudio(fileName: f) }
         currentFileName = nil
         state = .idle
+    }
+
+    // MARK: - Cambio de dispositivo de entrada (audífonos)
+
+    /// Observa el micrófono por defecto. Si cambia DURANTE la grabación (p. ej. conectas audífonos),
+    /// AVAudioRecorder se queda en el dispositivo viejo y el medidor se congela → finalizamos la nota
+    /// de forma limpia (se guarda y transcribe lo grabado) en vez de dejar un estado roto.
+    private func installDeviceListener() {
+        deviceListenerLock.lock()
+        defer { deviceListenerLock.unlock() }
+        guard deviceListener == nil else { return }
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.handleInputDeviceChange() } }
+        }
+        let status = AudioObjectAddPropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject), &addr, DispatchQueue.main, block)
+        if status == noErr { deviceListener = block }
+    }
+
+    nonisolated private func removeDeviceListener() {
+        deviceListenerLock.lock()
+        defer { deviceListenerLock.unlock() }
+        guard let block = deviceListener else { return }
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDefaultInputDevice,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain)
+        AudioObjectRemovePropertyListenerBlock(
+            AudioObjectID(kAudioObjectSystemObject), &addr, DispatchQueue.main, block)
+        deviceListener = nil
+    }
+
+    @MainActor
+    private func handleInputDeviceChange() {
+        guard state == .recording, !finishing else { return }
+        stop()   // finaliza y transcribe lo grabado hasta el cambio de dispositivo
     }
 
     /// Vuelve a .idle desde estados terminales (error o sin API key) para revalidar al reabrir.
@@ -193,27 +252,34 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     }
 
     /// Reintenta transcribir el audio de un elemento que ya existe (nota fallida con su audio).
+    /// `forceProvider` ("openai") salta la elección y el fallback (p. ej. "Usar OpenAI esta vez").
     @MainActor
-    func retry(itemID: UUID, audioFileName: String) {
+    func retry(itemID: UUID, audioFileName: String, forceProvider: String? = nil) {
         onVoiceNoteRetrying?(itemID)
-        transcribeInBackground(id: itemID, url: storage.audioURL(for: audioFileName))
+        transcribeInBackground(id: itemID, url: storage.audioURL(for: audioFileName), forceProvider: forceProvider)
     }
 
     /// Núcleo de la transcripción en 2º plano (común a grabar, subir y reintentar). No toca `state`.
     @MainActor
-    private func transcribeInBackground(id: UUID?, url: URL) {
+    private func transcribeInBackground(id: UUID?, url: URL, forceProvider: String? = nil) {
         transcribingCount += 1
-        let model = Settings.shared.transcriptionModel       // leídos en MainActor (evita data race)
+        // Resolver el modelo del proveedor activo aquí, en el MainActor (evita leer Settings.shared
+        // desde el hilo de la transcripción). Gemini y OpenAI tienen su propio ajuste de modelo.
+        let model = Settings.shared.aiProvider == "gemini"
+            ? Settings.shared.geminiModel : Settings.shared.transcriptionModel
         let language = Settings.shared.transcriptionLanguage
         Task { @MainActor in
             defer { transcribingCount -= 1 }
             do {
-                let text = try await AIProvider.transcribe(audioURL: url, language: language, model: model)
+                let text = try await AIProvider.transcribe(audioURL: url, language: language,
+                                                           model: model, forceProvider: forceProvider)
                 let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.isEmpty { if let id { onVoiceNoteFailed?(id) } }
+                if trimmed.isEmpty { if let id { onVoiceNoteFailed?(id, nil) } }   // sin voz: no es error de clave
                 else { if let id { onVoiceNoteTranscribed?(id, trimmed) } }
+            } catch let e as TranscriptionError {
+                if let id { onVoiceNoteFailed?(id, e) }   // el audio queda en el historial para reintentar/recuperar
             } catch {
-                if let id { onVoiceNoteFailed?(id) }   // el audio queda en el historial para reintentar/recuperar
+                if let id { onVoiceNoteFailed?(id, TranscriptionError.wrap(error, provider: AIProvider.selected)) }
             }
         }
     }
@@ -226,8 +292,9 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         return min(1, (db - minDb) / -minDb)
     }
 
-    func audioRecorderDidFinishRecording(_ r: AVAudioRecorder, successfully ok: Bool) {
+    nonisolated func audioRecorderDidFinishRecording(_ r: AVAudioRecorder, successfully ok: Bool) {
         Task { @MainActor in
+            removeDeviceListener()   // garantiza quitar el listener también si el delegado se dispara solo
             finishing = false
             recorder = nil
             guard let name = currentFileName else { return }   // cancelado: no es error, solo salir
@@ -236,4 +303,6 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
             ingest(audioFileName: name)   // conserva el .m4a y transcribe
         }
     }
+
+    deinit { removeDeviceListener() }   // red de seguridad (no toca @MainActor: solo CoreAudio + la var)
 }

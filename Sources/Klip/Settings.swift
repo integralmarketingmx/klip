@@ -22,9 +22,16 @@ struct KeyCombo: Equatable {
     /// Atajo de voz por defecto: ⌘⇧I (Cmd+Shift+I).
     static let defaultVoiceCombo = KeyCombo(keyCode: UInt32(kVK_ANSI_I),
                                             carbonModifiers: UInt32(cmdKey | shiftKey))
-    /// Atajo de captura por defecto: ⌘⇧2 (Cmd+Shift+2).
-    static let defaultCaptureCombo = KeyCombo(keyCode: UInt32(kVK_ANSI_2),
+    /// Atajo de captura por defecto: ⌘⇧U (Cmd+Shift+U). Letra (no número) para no chocar con apps que
+    /// secuestran ⌘⇧2 (p. ej. Loom) y para acompañar a ⌘⇧E / ⌘⇧I.
+    static let defaultCaptureCombo = KeyCombo(keyCode: UInt32(kVK_ANSI_U),
                                               carbonModifiers: UInt32(cmdKey | shiftKey))
+    /// ⌘⇧4 (el de captura nativo de macOS) — para "reemplazar ⌘⇧4".
+    static let cmdShift4Combo = KeyCombo(keyCode: UInt32(kVK_ANSI_4),
+                                         carbonModifiers: UInt32(cmdKey | shiftKey))
+    /// Antiguo default de captura (⌘⇧2), usado solo para migrar a ⌘⇧U a quien lo tenga persistido.
+    static let legacyCaptureCombo = KeyCombo(keyCode: UInt32(kVK_ANSI_2),
+                                             carbonModifiers: UInt32(cmdKey | shiftKey))
 
     var isValid: Bool { carbonModifiers != 0 }
 
@@ -65,11 +72,33 @@ struct KeyCombo: Equatable {
     static let suggestions: [KeyCombo] = [
         KeyCombo(keyCode: UInt32(kVK_ANSI_E), carbonModifiers: UInt32(cmdKey | shiftKey)),   // ⌘⇧E
         KeyCombo(keyCode: UInt32(kVK_ANSI_I), carbonModifiers: UInt32(cmdKey | shiftKey)),   // ⌘⇧I
+        KeyCombo(keyCode: UInt32(kVK_ANSI_U), carbonModifiers: UInt32(cmdKey | shiftKey)),   // ⌘⇧U (captura)
         KeyCombo(keyCode: UInt32(kVK_ANSI_Y), carbonModifiers: UInt32(cmdKey | shiftKey)),   // ⌘⇧Y
         KeyCombo(keyCode: UInt32(kVK_ANSI_M), carbonModifiers: UInt32(cmdKey | shiftKey)),   // ⌘⇧M
         KeyCombo(keyCode: UInt32(kVK_Space),  carbonModifiers: UInt32(optionKey)),           // ⌥Espacio
         KeyCombo(keyCode: UInt32(kVK_Space),  carbonModifiers: UInt32(optionKey | shiftKey)) // ⌥⇧Espacio
     ]
+}
+
+// MARK: - Método de envío de email
+
+/// Método con el que la app manda los correos. El default reproduce el comportamiento previo (DWD).
+enum MailMethod: String, CaseIterable, Identifiable {
+    // Google Workspace: OAuth de escritorio POR USUARIO (scope gmail.send). Cada quien autoriza su
+    // propia cuenta y solo envía como sí mismo → sin llave que impersone a otros del dominio.
+    case oauth
+    case smtp    // SMTP manual: host/puerto/usuario/contraseña propios.
+    case systemMail // Mail del sistema: abre el compositor nativo (NSSharingService) con la imagen.
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .oauth:      return "Google Workspace"
+        case .smtp:       return "SMTP"
+        case .systemMail: return "Mail del sistema"
+        }
+    }
 }
 
 func cocoaToCarbonModifiers(_ flags: NSEvent.ModifierFlags) -> UInt32 {
@@ -102,11 +131,27 @@ final class Settings: ObservableObject {
         static let geminiModel = "geminiModel"
         static let transLang  = "transcriptionLanguage"
         static let aiProv     = "aiProvider"
+        static let transFallback = "transcriptionFallback"
+        static let alwaysOnTop = "alwaysOnTop"
+        static let overrideCmd4 = "overrideSystemCapture"
+        static let pendingCmd4Verify = "pendingCmd4Verify"
         static let keyCode2   = "voiceHotKeyCode"
         static let mods2      = "voiceHotKeyModifiers"
         static let keyCode3   = "captureHotKeyCode"
         static let mods3      = "captureHotKeyModifiers"
         static let uiLang     = "uiLanguage"
+        static let uploadEndpoint = "uploadEndpoint"
+        static let mailApiToken = "mailApiToken"
+        static let mailFrom     = "mailFrom"
+        // Método de envío seleccionable y sus campos por método.
+        static let mailMethod   = "mailMethod"
+        static let smtpHost     = "smtpHost"
+        static let smtpPort     = "smtpPort"
+        static let smtpUser     = "smtpUser"
+        static let smtpFrom     = "smtpFrom"
+        static let googleClientId     = "googleClientId"
+        static let googleClientSecret = "googleClientSecret"
+        static let googleAccountEmail = "googleAccountEmail"  // email conectado (estado UI), no secreto
     }
 
     @Published var maxItems: Int          { didSet { d.set(maxItems, forKey: K.maxItems) } }
@@ -127,6 +172,14 @@ final class Settings: ObservableObject {
     @Published var transcriptionLanguage: String { didSet { d.set(transcriptionLanguage, forKey: K.transLang) } }
     /// Proveedor de IA para transcripción: "openai" o "gemini".
     @Published var aiProvider: String { didSet { d.set(aiProvider, forKey: K.aiProv) } }
+    /// Si el proveedor elegido (Gemini) falla, reintenta con OpenAI cuando haya clave.
+    @Published var transcriptionFallback: Bool { didSet { d.set(transcriptionFallback, forKey: K.transFallback) } }
+    /// Fijar el panel de historial: no se auto-cierra al hacer clic fuera ni al capturar.
+    @Published var alwaysOnTop: Bool { didSet { d.set(alwaysOnTop, forKey: K.alwaysOnTop) } }
+    /// Reemplazar ⌘⇧4 de macOS: Klip desactiva la captura del sistema y la reclama.
+    @Published var overrideSystemCapture: Bool { didSet { d.set(overrideSystemCapture, forKey: K.overrideCmd4) } }
+    /// Esperando que el usuario cierre sesión para que ⌘⇧4 quede libre; se verifica al re-arrancar.
+    @Published var pendingCmd4Verify: Bool { didSet { d.set(pendingCmd4Verify, forKey: K.pendingCmd4Verify) } }
     @Published var voiceCombo: KeyCombo   { didSet {
         d.set(Int(voiceCombo.keyCode), forKey: K.keyCode2)
         d.set(Int(voiceCombo.carbonModifiers), forKey: K.mods2)
@@ -136,10 +189,35 @@ final class Settings: ObservableObject {
         d.set(Int(captureCombo.carbonModifiers), forKey: K.mods3)
     } }
     @Published var uiLanguage: String     { didSet { d.set(uiLanguage, forKey: K.uiLang) } }
+    /// Servidor de subida de capturas (estilo Lightshot). POST multipart a `<endpoint>/upload`,
+    /// devuelve `{"url": "…"}`. Los links se auto-purgan a los 3 días (etapa de pruebas).
+    @Published var uploadEndpoint: String { didSet { d.set(uploadEndpoint, forKey: K.uploadEndpoint) } }
+    /// Shared secret para los endpoints de email del server (POST /send). Va en el header `X-Klip-Token`.
+    @Published var mailApiToken: String { didSet { d.set(mailApiToken, forKey: K.mailApiToken) } }
+    /// Remitente por defecto (usuario actual a impersonar vía DWD en el server). Editable en el compositor.
+    @Published var mailFrom: String { didSet { d.set(mailFrom, forKey: K.mailFrom) } }
 
-    /// Toggle simple que controla los tres filtros de privacidad a la vez.
+    /// Método de envío seleccionado en Preferencias → Email. Default "dwd" (comportamiento previo).
+    @Published var mailMethod: MailMethod { didSet { d.set(mailMethod.rawValue, forKey: K.mailMethod) } }
+
+    // MARK: Campos del método SMTP (la contraseña va CIFRADA en SecretStore, no aquí).
+    @Published var smtpHost: String { didSet { d.set(smtpHost, forKey: K.smtpHost) } }
+    @Published var smtpPort: Int    { didSet { d.set(smtpPort, forKey: K.smtpPort) } }
+    @Published var smtpUser: String { didSet { d.set(smtpUser, forKey: K.smtpUser) } }
+    @Published var smtpFrom: String { didSet { d.set(smtpFrom, forKey: K.smtpFrom) } }
+
+    // MARK: Campos del método OAuth (el refresh token va CIFRADO en SecretStore).
+    /// Client ID/secret del OAuth client de escritorio (los configura el dueño; vacíos por default).
+    @Published var googleClientId: String     { didSet { d.set(googleClientId, forKey: K.googleClientId) } }
+    @Published var googleClientSecret: String { didSet { d.set(googleClientSecret, forKey: K.googleClientSecret) } }
+    /// Email de la cuenta conectada (solo estado para la UI; no es secreto).
+    @Published var googleAccountEmail: String { didSet { d.set(googleAccountEmail, forKey: K.googleAccountEmail) } }
+
+    /// Toggle maestro de los tres filtros de privacidad. El setter los mueve juntos, así que el
+    /// getter usa AND (maestro = "todos activos") para que get/set sean consistentes en el binding
+    /// del Toggle y no haya estados intermedios ambiguos.
     var ignoreSensitive: Bool {
-        get { ignoreConcealed || ignoreTransient || ignoreAutoGenerated }
+        get { ignoreConcealed && ignoreTransient && ignoreAutoGenerated }
         set { ignoreConcealed = newValue; ignoreTransient = newValue; ignoreAutoGenerated = newValue }
     }
 
@@ -159,11 +237,26 @@ final class Settings: ObservableObject {
             K.geminiModel: "gemini-flash-latest",
             K.transLang: "es",
             K.aiProv: "openai",
+            K.transFallback: true,
+            K.alwaysOnTop: false,
+            K.overrideCmd4: false,
+            K.pendingCmd4Verify: false,
             K.keyCode2: Int(kVK_ANSI_I),
             K.mods2: Int(cmdKey | shiftKey),
-            K.keyCode3: Int(kVK_ANSI_2),
+            K.keyCode3: Int(kVK_ANSI_U),
             K.mods3: Int(cmdKey | shiftKey),
-            K.uiLang: "es"
+            K.uiLang: "en",   // English es el idioma base/por defecto (colaboración open-source); conmutable
+            K.uploadEndpoint: "https://klip.integralmarketing.agency",
+            K.mailApiToken: "",
+            K.mailFrom: "miguel.ibarra@integralmarketing.agency",
+            K.mailMethod: MailMethod.oauth.rawValue,
+            K.smtpHost: "",
+            K.smtpPort: 587,
+            K.smtpUser: "",
+            K.smtpFrom: "",
+            K.googleClientId: "",
+            K.googleClientSecret: "",
+            K.googleAccountEmail: ""
         ])
         maxItems = d.integer(forKey: K.maxItems)
         combo = KeyCombo(keyCode: UInt32(d.integer(forKey: K.keyCode)),
@@ -179,11 +272,36 @@ final class Settings: ObservableObject {
         geminiModel = d.string(forKey: K.geminiModel) ?? "gemini-flash-latest"
         transcriptionLanguage = d.string(forKey: K.transLang) ?? "es"
         aiProvider = d.string(forKey: K.aiProv) ?? "openai"
+        transcriptionFallback = d.object(forKey: K.transFallback) as? Bool ?? true
+        alwaysOnTop = d.object(forKey: K.alwaysOnTop) as? Bool ?? false
+        overrideSystemCapture = d.object(forKey: K.overrideCmd4) as? Bool ?? false
+        pendingCmd4Verify = d.object(forKey: K.pendingCmd4Verify) as? Bool ?? false
         voiceCombo = KeyCombo(keyCode: UInt32(d.integer(forKey: K.keyCode2)),
                               carbonModifiers: UInt32(d.integer(forKey: K.mods2)))
         captureCombo = KeyCombo(keyCode: UInt32(d.integer(forKey: K.keyCode3)),
                                 carbonModifiers: UInt32(d.integer(forKey: K.mods3)))
-        uiLanguage = d.string(forKey: K.uiLang) ?? "es"
+        uiLanguage = d.string(forKey: K.uiLang) ?? "en"
+        uploadEndpoint = d.string(forKey: K.uploadEndpoint) ?? "https://klip.integralmarketing.agency"
+        mailApiToken = d.string(forKey: K.mailApiToken) ?? ""
+        mailFrom = d.string(forKey: K.mailFrom) ?? "miguel.ibarra@integralmarketing.agency"
+        // Migración: el método DWD se retiró (impersonaba a cualquiera del dominio). Quien lo tuviera
+        // guardado pasa a Google Workspace (OAuth per-usuario), que solo envía como uno mismo.
+        mailMethod = MailMethod(rawValue: d.string(forKey: K.mailMethod) ?? "oauth") ?? .oauth
+        smtpHost = d.string(forKey: K.smtpHost) ?? ""
+        smtpPort = d.object(forKey: K.smtpPort) as? Int ?? 587
+        smtpUser = d.string(forKey: K.smtpUser) ?? ""
+        smtpFrom = d.string(forKey: K.smtpFrom) ?? ""
+        googleClientId = d.string(forKey: K.googleClientId) ?? ""
+        googleClientSecret = d.string(forKey: K.googleClientSecret) ?? ""
+        googleAccountEmail = d.string(forKey: K.googleAccountEmail) ?? ""
+
+        // Migración única: el default de captura pasó de ⌘⇧2 a ⌘⇧U (⌘⇧2 lo secuestraban apps como Loom).
+        // A quien siga con el viejo ⌘⇧2 persistido, moverlo a ⌘⇧U. Si el usuario eligió otro atajo, respetarlo.
+        let migCaptureKey = "migratedCaptureToU"
+        if !d.bool(forKey: migCaptureKey) {
+            if captureCombo == KeyCombo.legacyCaptureCombo { captureCombo = KeyCombo.defaultCaptureCombo }
+            d.set(true, forKey: migCaptureKey)
+        }
     }
 
     func addExcludedApp(_ id: String) {

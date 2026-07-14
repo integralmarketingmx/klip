@@ -1,0 +1,41 @@
+<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Klip — Reemplazar ⌘⇧4</title>
+<style>
+:root{--bg:#1e1e1f;--card:#2a2a2c;--card2:#323234;--stroke:#3a3a3d;--text:#f2f2f3;--muted:#9a9a9f;--accent:#0a84ff;--green:#30d158;--font:-apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif}
+*{box-sizing:border-box}body{margin:0;background:#161617;color:var(--text);font-family:var(--font);padding:40px 24px;line-height:1.45}
+h1{font-size:21px;margin:0 0 6px}.sub{color:var(--muted);font-size:13px;margin:0 0 26px}
+.win{max-width:560px;background:var(--bg);border:1px solid var(--stroke);border-radius:14px;box-shadow:0 24px 60px rgba(0,0,0,.55);overflow:hidden}
+.tb{height:38px;display:flex;align-items:center;gap:8px;padding:0 14px;background:linear-gradient(#2d2d2f,#262628);border-bottom:1px solid #000}
+.dot{width:12px;height:12px;border-radius:50%}.r{background:#ff5f57}.y{background:#febc2e}.g{background:#28c840}
+.tb .t{font-size:13px;color:var(--muted);margin:0 auto}
+.body{padding:18px}.sec{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;margin:0 0 10px;letter-spacing:.3px}
+.card{background:var(--card);border-radius:10px;border:1px solid var(--stroke)}
+.row{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--stroke)}.row:last-child{border-bottom:0}
+.kbd{font-family:ui-monospace,monospace;font-size:12px;background:var(--card2);border:1px solid var(--stroke);border-radius:6px;padding:3px 9px}
+.sw{width:40px;height:24px;border-radius:13px;background:var(--green);position:relative;flex:0 0 auto}.sw.off{background:#48484a}
+.sw i{position:absolute;top:2px;left:18px;width:20px;height:20px;border-radius:50%;background:#fff}.sw.off i{left:2px}
+.lbl small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}
+.note{font-size:11.5px;color:var(--muted);padding:10px 14px 2px}
+.warn{font-size:11.5px;color:#ffd479;padding:8px 14px}
+</style></head><body>
+<h1>Reemplazar ⌘⇧4 de macOS</h1>
+<p class="sub">Nuevo toggle en Preferencias › Atajos. Así se vería.</p>
+<div class="win">
+  <div class="tb"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="t">Preferencias de Klip</span></div>
+  <div class="body">
+    <p class="sec">Atajos</p>
+    <div class="card">
+      <div class="row"><div class="lbl">Mostrar historial</div><span class="kbd">⌘⇧E</span></div>
+      <div class="row"><div class="lbl">Grabar nota de voz</div><span class="kbd">⌘⇧I</span></div>
+      <div class="row"><div class="lbl">Capturar y anotar</div><span class="kbd">⌘⇧4</span></div>
+      <div class="row">
+        <div class="lbl">Reemplazar ⌘⇧4 de macOS
+          <small>Desactiva la captura del sistema y se la asigna a Klip</small>
+        </div>
+        <div class="sw"><i></i></div>
+      </div>
+    </div>
+    <p class="note">Al activarlo, Klip apaga el ⌘⇧4 de macOS (Ajustes › Teclado › Capturas) y registra ⌘⇧4 para sí mismo. Al apagarlo, lo restaura y Klip vuelve a ⌘⇧2.</p>
+    <p class="warn">⚠️ Modifica una preferencia del sistema (reversible). Pide permiso solo la primera vez si macOS lo solicita.</p>
+  </div>
+</div>
+</body></html>

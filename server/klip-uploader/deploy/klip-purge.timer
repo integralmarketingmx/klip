@@ -1,0 +1,9 @@
+[Unit]
+Description=Ejecuta la purga de capturas Klip cada hora
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+
+[Install]
+WantedBy=timers.target

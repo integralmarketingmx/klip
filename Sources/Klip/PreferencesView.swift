@@ -18,11 +18,29 @@ final class APIKeyModel: ObservableObject {
         last4 = SecretStore.last4(key)
     }
 
-    func save(_ raw: String) {
+    @discardableResult
+    func save(_ raw: String) -> Bool {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        SecretStore.set(trimmed, key); errorMessage = nil; savedOK = true
-        refresh()
+        guard !trimmed.isEmpty else {
+            errorMessage = "No se detectó ninguna clave. Pega el texto y vuelve a intentarlo."
+            savedOK = false
+            return false
+        }
+        do {
+            let ok = try SecretStore.set(trimmed, key)   // escribe y RELEE para confirmar
+            if ok {
+                errorMessage = nil; savedOK = true
+            } else {
+                errorMessage = "La clave no se pudo confirmar tras guardarla."; savedOK = false
+            }
+            refresh()
+            return ok
+        } catch {
+            errorMessage = "No se pudo guardar: \(error.localizedDescription)"
+            savedOK = false
+            refresh()
+            return false
+        }
     }
 
     func delete() {
@@ -49,12 +67,36 @@ struct PreferencesView: View {
     @State private var loginError: String?
     @State private var accessibilityGranted = Paster.hasAccessibilityPermission
 
+    @State private var costPromptCopied = false
+
+    // MARK: Estado del método de email
+    @StateObject private var smtpPass = APIKeyModel(.smtp)
+    @State private var draftSMTPPass = ""
+    @State private var showSMTPPass = false
+    @State private var googleConnecting = false
+    @State private var googleError: String?
+    @State private var googleConnected = GoogleOAuthClient.shared.isConnected
+
     private let models = ["gpt-4o-mini-transcribe", "whisper-1"]
+
+    /// Prompt listo para pegar en cualquier IA y verificar los precios vigentes (cambian seguido).
+    private let costCheckPrompt = """
+    Compara el costo ACTUAL (hoy) de transcribir audio con estos modelos: \
+    Google Gemini (gemini-flash-latest, con thinkingBudget 0), \
+    OpenAI gpt-4o-mini-transcribe y OpenAI whisper-1. \
+    Dame el precio por minuto de cada uno y cuál es el más barato. \
+    Cita las páginas oficiales de precios de OpenAI y Google.
+    """
     // Modelos de Gemini. Los alias "-latest" evitan 404 por deprecación; se incluyen también
     // versiones fijadas para quien quiera estabilidad de comportamiento.
     private let geminiModels = ["gemini-flash-latest", "gemini-flash-lite-latest",
                                 "gemini-pro-latest", "gemini-2.5-flash", "gemini-2.5-pro"]
-    private let languages = ["es": "Español", "en": "Inglés", "": "Detectar automáticamente"]
+    // Dictation/audio languages passed to the transcription provider (endonyms). "" = auto-detect.
+    private let dictationLanguages: [(code: String, name: String)] = [
+        ("en", "English"), ("es", "Español"), ("fr", "Français"), ("de", "Deutsch"),
+        ("it", "Italiano"), ("pt", "Português"), ("zh", "中文"), ("ja", "日本語"),
+        ("ko", "한국어"), ("ru", "Русский"), ("nl", "Nederlands"), ("hi", "हिन्दी")
+    ]
 
     private var appLogo: NSImage? {
         if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
@@ -73,6 +115,102 @@ struct PreferencesView: View {
             apiKey.refresh(); geminiKey.refresh()
             launchAtLogin = LoginItem.shared.isEnabledOrPending
             accessibilityGranted = Paster.hasAccessibilityPermission
+            // Re-sincroniza el estado de Google por si se desconectó fuera de esta ventana.
+            googleConnected = GoogleOAuthClient.shared.isConnected
+        }
+    }
+
+    /// Campos del email que cambian según el método elegido.
+    @ViewBuilder
+    private var emailMethodFields: some View {
+        // Campos comunes a todos los métodos que pasan por el backend (no system mail).
+        if settings.mailMethod != .systemMail {
+            TextField("Remitente · tu@empresa.com", text: $settings.mailFrom)
+                .textFieldStyle(.roundedBorder)
+        }
+
+        switch settings.mailMethod {
+        case .oauth:
+            TextField("Servidor (https://klip…)", text: $settings.uploadEndpoint)
+                .textFieldStyle(.roundedBorder)
+            SecureField("Token de API (KLIP_API_TOKEN)", text: $settings.mailApiToken)
+                .textFieldStyle(.roundedBorder)
+            TextField("Google Client ID", text: $settings.googleClientId)
+                .textFieldStyle(.roundedBorder)
+            SecureField("Google Client Secret", text: $settings.googleClientSecret)
+                .textFieldStyle(.roundedBorder)
+            HStack(spacing: 10) {
+                if googleConnected {
+                    Image(systemName: "checkmark.seal.fill").foregroundStyle(.green)
+                    Text(settings.googleAccountEmail.isEmpty
+                         ? "Conectado" : "Conectado como \(settings.googleAccountEmail)")
+                        .font(.caption)
+                    Spacer()
+                    Button("Desconectar") {
+                        GoogleOAuthClient.shared.disconnect()
+                        googleConnected = false
+                    }
+                } else {
+                    GoogleSignInButton(connecting: googleConnecting) {
+                        Task { await connectGoogle() }
+                    }
+                    .disabled(googleConnecting
+                              || settings.googleClientId.isEmpty
+                              || settings.googleClientSecret.isEmpty)
+                    .opacity((settings.googleClientId.isEmpty || settings.googleClientSecret.isEmpty) ? 0.5 : 1)
+                    Spacer()
+                }
+            }
+            if let googleError { Text(googleError).font(.caption).foregroundStyle(.red) }
+            Text("Inicia sesión con tu propia cuenta de Google (scope gmail.send). El correo sale como tú. El token de API protege el endpoint /send.")
+                .font(.caption).foregroundStyle(.secondary)
+
+        case .smtp:
+            TextField("Servidor (https://klip…)", text: $settings.uploadEndpoint)
+                .textFieldStyle(.roundedBorder)
+            SecureField("Token de API (KLIP_API_TOKEN)", text: $settings.mailApiToken)
+                .textFieldStyle(.roundedBorder)
+            TextField("SMTP host · smtp.tuempresa.com", text: $settings.smtpHost)
+                .textFieldStyle(.roundedBorder)
+            TextField("Puerto", value: $settings.smtpPort, format: .number)
+                .textFieldStyle(.roundedBorder)
+            TextField("Usuario SMTP", text: $settings.smtpUser)
+                .textFieldStyle(.roundedBorder)
+            HStack {
+                Group {
+                    if showSMTPPass {
+                        TextField("Contraseña SMTP", text: $draftSMTPPass)
+                    } else {
+                        SecureField(smtpPass.isConfigured ? "•••••• (guardada)" : "Contraseña SMTP",
+                                    text: $draftSMTPPass)
+                    }
+                }
+                .textFieldStyle(.roundedBorder)
+                Button(showSMTPPass ? "Ocultar" : "Ver") { showSMTPPass.toggle() }
+                Button("Guardar") { smtpPass.save(draftSMTPPass); draftSMTPPass = "" }
+                    .disabled(draftSMTPPass.isEmpty)
+            }
+            TextField("Remitente SMTP (opcional, default = remitente)", text: $settings.smtpFrom)
+                .textFieldStyle(.roundedBorder)
+            if let e = smtpPass.errorMessage { Text(e).font(.caption).foregroundStyle(.red) }
+            Text("La contraseña SMTP se guarda CIFRADA en este Mac y viaja por HTTPS al backend, que la usa para el envío y NO la persiste. El correo sale por tu servidor SMTP (STARTTLS).")
+                .font(.caption).foregroundStyle(.secondary)
+
+        case .systemMail:
+            Text("Al enviar, Klip abre el compositor de correo nativo (Mail.app o tu cliente por defecto) con la imagen adjunta. No requiere servidor ni token; funciona con cualquier cuenta.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private func connectGoogle() async {
+        googleError = nil
+        googleConnecting = true
+        defer { googleConnecting = false }
+        do {
+            _ = try await GoogleOAuthClient.shared.connect()
+            googleConnected = true
+        } catch {
+            googleError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         }
     }
 
@@ -83,14 +221,14 @@ struct PreferencesView: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text("Klip").font(.title2).bold()
-                Text("v\(AppInfo.version) · Gestor de portapapeles para macOS")
+                Text("v\(AppInfo.version) · \(L10n.t("app.tagline"))")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack(spacing: 12) {
                     if let u = URL(string: AppInfo.repoURL) {
                         Link(label: "chevron.left.forwardslash.chevron.right", text: "GitHub", url: u)
                     }
                     if let u = URL(string: AppInfo.issuesURL) {
-                        Link(label: "lightbulb", text: "Sugerencias", url: u)
+                        Link(label: "lightbulb", text: L10n.t("prefs.suggestions"), url: u)
                     }
                 }
                 .font(.caption)
@@ -102,111 +240,170 @@ struct PreferencesView: View {
 
     private var form: some View {
         Form {
-            Section("Idioma · Language") {
-                Picker("Idioma de la app", selection: $settings.uiLanguage) {
-                    Text("Español").tag("es")
-                    Text("English").tag("en")
+            Section(L10n.t("prefs.lang.section")) {
+                Picker(L10n.t("prefs.lang.label"), selection: $settings.uiLanguage) {
+                    ForEach(L10n.supported, id: \.code) { Text($0.name).tag($0.code) }
                 }
-                .pickerStyle(.segmented)
             }
 
-            Section("General") {
-                Toggle("Abrir Klip al iniciar sesión", isOn: Binding(
+            Section(L10n.t("prefs.general")) {
+                Toggle(L10n.t("prefs.openAtLogin"), isOn: Binding(
                     get: { launchAtLogin }, set: { setLaunchAtLogin($0) }))
                 if let loginError { Text(loginError).font(.caption).foregroundStyle(.red) }
-                Toggle("Pegar automáticamente al elegir un elemento", isOn: $settings.autoPaste)
+                Toggle(L10n.t("prefs.autopaste"), isOn: $settings.autoPaste)
                 if settings.autoPaste && !accessibilityGranted {
                     HStack(spacing: 6) {
                         Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                        Text("Requiere permiso de Accesibilidad.").font(.caption)
-                        Button("Conceder…") { Paster.ensureAccessibilityPermission(prompt: true) }.font(.caption)
+                        Text(L10n.t("prefs.needAccessibility")).font(.caption)
+                        Button(L10n.t("prefs.grant")) { Paster.ensureAccessibilityPermission(prompt: true) }.font(.caption)
                     }
                 }
-                Stepper("Máximo de elementos: \(settings.maxItems)",
+                Stepper(String(format: L10n.t("prefs.maxItems"), settings.maxItems),
                         value: $settings.maxItems, in: 20...1000, step: 10)
                     .onChange(of: settings.maxItems) { _, _ in onMaxItemsChange() }
             }
 
-            Section("Atajos") {
-                HStack { Text("Mostrar historial:"); Spacer()
+            Section("Email (enviar capturas)") {
+                Picker("Método de envío", selection: $settings.mailMethod) {
+                    ForEach(MailMethod.allCases) { m in
+                        Text(m.displayName).tag(m)
+                    }
+                }
+                emailMethodFields
+            }
+
+            Section(L10n.t("prefs.shortcuts")) {
+                HStack { Text(L10n.t("prefs.sc.show")); Spacer()
                     HotKeyField(combo: $settings.combo, onChange: onHotKeyChange) }
-                HStack { Text("Grabar nota de voz:"); Spacer()
+                HStack { Text(L10n.t("prefs.sc.voice")); Spacer()
                     HotKeyField(combo: $settings.voiceCombo, onChange: onVoiceHotKeyChange) }
-                HStack { Text("Capturar región:"); Spacer()
+                HStack { Text(L10n.t("prefs.sc.capture")); Spacer()
                     HotKeyField(combo: $settings.captureCombo, onChange: onCaptureHotKeyChange) }
-                Text("Pulsa el campo y teclea la combinación, o usa ⌄ para elegir una sugerida.")
+                Text(L10n.t("prefs.sc.hint"))
+                    .font(.caption).foregroundStyle(.secondary)
+                Toggle("Reemplazar ⌘⇧4 de macOS", isOn: Binding(
+                    get: { settings.overrideSystemCapture },
+                    set: { setOverrideCmd4($0) }))
+                Text("Desactiva la captura del sistema (⌘⇧4) y se la asigna a Klip. Al apagarlo, la restaura y Klip vuelve a ⌘⇧2.")
                     .font(.caption).foregroundStyle(.secondary)
             }
 
-            Section("Transcripción de voz") {
-                Picker("Proveedor", selection: $settings.aiProvider) {
+            Section(L10n.t("prefs.voice.section")) {
+                Picker(L10n.t("prefs.provider"), selection: $settings.aiProvider) {
                     Text("OpenAI").tag("openai")
                     Text("Google Gemini").tag("gemini")
                 }
                 .pickerStyle(.segmented)
                 if settings.aiProvider == "openai" {
-                    Picker("Modelo", selection: $settings.transcriptionModel) {
+                    Picker(L10n.t("prefs.model"), selection: $settings.transcriptionModel) {
                         ForEach(models, id: \.self) { Text($0).tag($0) }
                     }
                 } else {
-                    Picker("Modelo", selection: $settings.geminiModel) {
+                    Picker(L10n.t("prefs.model"), selection: $settings.geminiModel) {
                         ForEach(geminiModels, id: \.self) { Text($0).tag($0) }
                     }
                 }
-                Picker("Idioma del audio", selection: $settings.transcriptionLanguage) {
-                    ForEach(languages.sorted(by: { $0.value < $1.value }), id: \.key) { Text($1).tag($0) }
+                Picker(L10n.t("prefs.audioLang"), selection: $settings.transcriptionLanguage) {
+                    Text(L10n.t("lang.auto")).tag("")
+                    ForEach(dictationLanguages, id: \.code) { Text($0.name).tag($0.code) }
                 }
+                Toggle(settings.aiProvider == "gemini"
+                       ? "Usar OpenAI si Gemini falla"
+                       : "Usar Gemini si OpenAI falla", isOn: $settings.transcriptionFallback)
                 Text(settings.aiProvider == "gemini"
-                     ? "Se usará tu clave de Google Gemini (abajo)."
-                     : "Se usará tu clave de OpenAI (abajo).")
+                     ? L10n.t("prefs.voice.useGemini")
+                     : L10n.t("prefs.voice.useOpenAI"))
                     .font(.caption).foregroundStyle(.secondary)
             }
 
-            Section("OpenAI (clave para voz)") {
+            Section("Costo aproximado por transcripción") {
+                costRow(rank: 1, name: "Gemini", model: "gemini-flash-latest", perMin: "~$0.0020/min", cheapest: true)
+                costRow(rank: 2, name: "OpenAI mini", model: "gpt-4o-mini-transcribe", perMin: "~$0.003/min", cheapest: false)
+                costRow(rank: 3, name: "OpenAI Whisper", model: "whisper-1 (modelo viejo)", perMin: "~$0.006/min", cheapest: false)
+                Text("Medido en jun 2026 con ~1 min de audio. Gemini va sin “thinking” (más barato). **Los precios de las APIs cambian** — verifica los vigentes:")
+                    .font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 10) {
+                    Button {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(costCheckPrompt, forType: .string)
+                        costPromptCopied = true
+                        // Aislamiento @MainActor explícito (en vez de un closure de DispatchQueue
+                        // sin isolación) para resetear el estado tras 2s.
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .seconds(2))
+                            costPromptCopied = false
+                        }
+                    } label: {
+                        Label(costPromptCopied ? "Prompt copiado ✓" : "Copiar prompt para verificar precios",
+                              systemImage: costPromptCopied ? "checkmark" : "doc.on.doc")
+                    }
+                    Link(label: "link", text: "Precios OpenAI", url: URL(string: "https://openai.com/api/pricing")!)
+                        .font(.caption)
+                    Link(label: "link", text: "Precios Gemini", url: URL(string: "https://ai.google.dev/gemini-api/docs/pricing")!)
+                        .font(.caption)
+                }
+            }
+
+            if settings.aiProvider == "openai" {
+            Section(L10n.t("prefs.openai.section")) {
                 keyStatus(apiKey)
                 HStack {
-                    if showKey { TextField("sk-…", text: $draftKey).textFieldStyle(.roundedBorder) }
-                    else { SecureField("sk-…", text: $draftKey).textFieldStyle(.roundedBorder) }
+                    if showKey {
+                        TextField("sk-…", text: $draftKey).textFieldStyle(.roundedBorder)
+                            .onSubmit { saveOpenAI() }
+                    } else {
+                        SecureField("sk-…", text: $draftKey).textFieldStyle(.roundedBorder)
+                            .onSubmit { saveOpenAI() }
+                    }
                     Button { showKey.toggle() } label: { Image(systemName: showKey ? "eye.slash" : "eye") }
                         .buttonStyle(.borderless)
                 }
                 HStack {
-                    Button("Guardar") { apiKey.save(draftKey); draftKey = ""; showKey = false }
+                    Button(L10n.t("common.save")) { saveOpenAI() }
+                        .keyboardShortcut(.defaultAction)
                         .disabled(draftKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    Button("Borrar", role: .destructive) { apiKey.delete() }.disabled(!apiKey.isConfigured)
-                    if apiKey.savedOK { Label("Guardada", systemImage: "checkmark.circle.fill").foregroundStyle(.green).font(.caption) }
+                    Button(L10n.t("common.delete"), role: .destructive) { apiKey.delete() }.disabled(!apiKey.isConfigured)
+                    if apiKey.savedOK { Label(L10n.t("prefs.saved"), systemImage: "checkmark.circle.fill").foregroundStyle(.green).font(.caption) }
                 }
                 if let err = apiKey.errorMessage { Text(err).font(.caption).foregroundStyle(.red) }
             }
+            }
 
-            Section("Google Gemini (clave para voz)") {
+            if settings.aiProvider == "gemini" {
+            Section(L10n.t("prefs.gemini.section")) {
                 keyStatus(geminiKey)
                 HStack {
-                    if showGeminiKey { TextField("AIza…", text: $draftGeminiKey).textFieldStyle(.roundedBorder) }
-                    else { SecureField("AIza…", text: $draftGeminiKey).textFieldStyle(.roundedBorder) }
+                    if showGeminiKey {
+                        TextField("AIza…", text: $draftGeminiKey).textFieldStyle(.roundedBorder)
+                            .onSubmit { saveGemini() }
+                    } else {
+                        SecureField("AIza…", text: $draftGeminiKey).textFieldStyle(.roundedBorder)
+                            .onSubmit { saveGemini() }
+                    }
                     Button { showGeminiKey.toggle() } label: { Image(systemName: showGeminiKey ? "eye.slash" : "eye") }
                         .buttonStyle(.borderless)
                 }
                 HStack {
-                    Button("Guardar") { geminiKey.save(draftGeminiKey); draftGeminiKey = ""; showGeminiKey = false }
+                    Button(L10n.t("common.save")) { saveGemini() }
                         .disabled(draftGeminiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    Button("Borrar", role: .destructive) { geminiKey.delete() }.disabled(!geminiKey.isConfigured)
-                    if geminiKey.savedOK { Label("Guardada", systemImage: "checkmark.circle.fill").foregroundStyle(.green).font(.caption) }
+                    Button(L10n.t("common.delete"), role: .destructive) { geminiKey.delete() }.disabled(!geminiKey.isConfigured)
+                    if geminiKey.savedOK { Label(L10n.t("prefs.saved"), systemImage: "checkmark.circle.fill").foregroundStyle(.green).font(.caption) }
                 }
                 if let err = geminiKey.errorMessage { Text(err).font(.caption).foregroundStyle(.red) }
-                Text("Obtén tu clave en aistudio.google.com. Se guarda en un archivo local 0600, nunca en el repositorio.")
+                Text(L10n.t("prefs.gemini.help"))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            }
+
+            Section(L10n.t("prefs.privacy.section")) {
+                Toggle(L10n.t("prefs.privacy.toggle"), isOn: $settings.ignoreSensitive)
+                Text(L10n.t("prefs.privacy.info"))
                     .font(.caption).foregroundStyle(.secondary)
             }
 
-            Section("Privacidad") {
-                Toggle("No guardar contraseñas ni datos sensibles", isOn: $settings.ignoreSensitive)
-                Text("Klip ignora el contenido que las apps marcan como confidencial (gestores de contraseñas, campos temporales). Los tokens y API keys sueltos se detectan y se guardan aparte como credenciales.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-
-            Section("Apps excluidas") {
+            Section(L10n.t("prefs.excluded.section")) {
                 if settings.excludedBundleIDs.isEmpty {
-                    Text("Ninguna. El contenido copiado en estas apps no se guardará.")
+                    Text(L10n.t("prefs.excluded.none"))
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 ForEach(settings.excludedBundleIDs, id: \.self) { id in
@@ -216,10 +413,39 @@ struct PreferencesView: View {
                             .buttonStyle(.borderless)
                     }
                 }
-                Button { pickApp() } label: { Label("Añadir app…", systemImage: "plus") }
+                Button { pickApp() } label: { Label(L10n.t("prefs.excluded.add"), systemImage: "plus") }
             }
         }
         .formStyle(.grouped)
+    }
+
+    /// Fuerza al campo enfocado a confirmar su edición ANTES de leer el binding.
+    /// SwiftUI no siempre propaga el texto pegado a `draftKey` antes de que corra la acción del
+    /// botón (campo dentro de Form .grouped, sigue siendo first responder): al terminar la edición
+    /// del NSTextField, el valor en curso se vuelca al binding. Sin esto, `save` leía el valor viejo.
+    private func commitFocusedField() {
+        if let window = NSApp.keyWindow {
+            window.makeFirstResponder(nil)   // endEditing → vuelca el texto al binding
+        }
+    }
+
+    private func saveOpenAI() {
+        commitFocusedField()
+        // Tras volcar el binding en este ciclo de runloop, leer el valor ya actualizado.
+        DispatchQueue.main.async {
+            // Guard: si el campo quedó vacío (p. ej. doble clic tras un guardado que ya lo limpió),
+            // no llamar save("") — evita un mensaje de error espurio sobre un guardado válido.
+            guard !draftKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            if apiKey.save(draftKey) { draftKey = ""; showKey = false }
+        }
+    }
+
+    private func saveGemini() {
+        commitFocusedField()
+        DispatchQueue.main.async {
+            guard !draftGeminiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            if geminiKey.save(draftGeminiKey) { draftGeminiKey = ""; showGeminiKey = false }
+        }
     }
 
     @ViewBuilder
@@ -235,6 +461,66 @@ struct PreferencesView: View {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                 Text("Sin clave configurada").foregroundStyle(.secondary)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func costRow(rank: Int, name: String, model: String, perMin: String, cheapest: Bool) -> some View {
+        HStack(spacing: 8) {
+            Text("\(rank)")
+                .font(.caption2).bold()
+                .frame(width: 16, height: 16)
+                .background(Circle().fill(cheapest ? Color.green.opacity(0.22) : Color.secondary.opacity(0.15)))
+                .foregroundStyle(cheapest ? .green : .secondary)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(name)
+                Text(model).font(.caption2).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Text(perMin).font(.system(.body, design: .monospaced))
+            if cheapest {
+                Text("más barato")
+                    .font(.caption2).bold().foregroundStyle(.green)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Capsule().fill(Color.green.opacity(0.16)))
+            }
+        }
+    }
+
+    /// Activa/desactiva "Reemplazar ⌘⇧4": desactiva el atajo del sistema y asigna ⌘⇧4 a Klip
+    /// (o lo restaura y vuelve Klip a ⌘⇧2).
+    private func setOverrideCmd4(_ on: Bool) {
+        // Lo rápido en el hilo principal (que el switch responda al instante).
+        settings.overrideSystemCapture = on
+        let combo = on ? KeyCombo.cmdShift4Combo : .defaultCaptureCombo
+        settings.captureCombo = combo
+        onCaptureHotKeyChange(combo)                            // re-registra el hotkey global de Klip
+        // Lo lento (defaults + activateSettings) en segundo plano: no congela la UI.
+        DispatchQueue.global(qos: .userInitiated).async {
+            SystemShortcuts.setMacScreenshotAreaEnabled(!on)   // on → desactiva ⌘⇧4 de macOS
+        }
+        if on { settings.pendingCmd4Verify = true; promptReloginForCmd4() }
+        else  { settings.pendingCmd4Verify = false }
+    }
+
+    /// Modal: ⌘⇧4 necesita cerrar sesión para liberarse. Ofrece cerrar sesión ahora.
+    private func promptReloginForCmd4() {
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "Falta un paso para usar ⌘⇧4"
+        alert.informativeText = "Para que ⌘⇧4 abra Klip en vez de la captura de macOS, necesitas cerrar sesión y volver a entrar una vez. macOS suelta el atajo solo al reiniciar tu sesión (no apaga la Mac). Klip lo verificará al volver."
+        alert.addButton(withTitle: "Cerrar sesión ahora")     // .alertFirstButtonReturn
+        alert.addButton(withTitle: "Lo haré después")          // .alertSecondButtonReturn
+        let cancel = alert.addButton(withTitle: "Cancelar (usar ⌘⇧2)")  // .alertThirdButtonReturn
+        cancel.keyEquivalent = "\u{1b}"
+        NSApp.activate(ignoringOtherApps: true)
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            SystemShortcuts.logOut()                           // macOS pide su confirmación estándar
+        case .alertThirdButtonReturn:
+            setOverrideCmd4(false)                             // revertir: vuelve a ⌘⇧2 y restaura macOS
+        default:
+            break                                              // "Después": queda pendiente, verifica al re-login
         }
     }
 

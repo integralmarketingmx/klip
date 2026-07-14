@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8"><title>Klip · Mejoras anotador + compositor</title>
+<style>
+  body{margin:0;background:#141417;color:#ececf0;font-family:-apple-system,"SF Pro Text",Roboto,sans-serif;padding:26px}
+  h1{font-size:17px;margin:0 0 18px}
+  h2{font-size:13px;color:#9a9aa5;margin:26px 0 10px;font-weight:600}
+  .win{background:#222;border:1px solid #3a3a42;border-radius:11px;overflow:hidden;box-shadow:0 16px 44px rgba(0,0,0,.5);display:inline-block;vertical-align:top;margin:0 18px 18px 0}
+  .tb{display:flex;align-items:center;gap:7px;padding:9px 11px;border-bottom:1px solid #3a3a42;flex-wrap:wrap}
+  .t{width:30px;height:30px;border-radius:7px;background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;font-size:14px}
+  .t.on{background:#3b82f6}
+  .sep{width:1px;height:20px;background:#3a3a42;margin:0 3px}
+  .dot{width:15px;height:15px;border-radius:50%}
+  .canvas{width:330px;height:150px;background:linear-gradient(135deg,#4b6cb7,#182848);margin:11px;border-radius:8px;position:relative}
+  .emoji-on-canvas{position:absolute;left:130px;top:54px;font-size:34px}
+  .foot{display:flex;gap:7px;padding:10px 11px;border-top:1px solid #3a3a42;justify-content:flex-end;flex-wrap:wrap}
+  .btn{font-size:12px;padding:6px 11px;border-radius:7px;background:rgba(255,255,255,.08);display:flex;align-items:center;gap:5px}
+  .btn.p{background:#3b82f6;color:#fff}.btn.mail{background:#8b5cf6;color:#fff}
+  .pop{position:absolute;background:#2a2a30;border:1px solid #3a3a42;border-radius:10px;padding:8px;display:grid;grid-template-columns:repeat(6,1fr);gap:4px;box-shadow:0 10px 30px rgba(0,0,0,.5);margin-top:6px}
+  .pop span{width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:18px;border-radius:6px;cursor:pointer}
+  .pop span:hover{background:rgba(255,255,255,.1)}
+  .note{font-size:11px;color:#9a9aa5;max-width:380px;line-height:1.5;display:inline-block;vertical-align:top;margin-left:8px}
+  /* history row */
+  .row{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.05);border-radius:8px;padding:8px;width:340px}
+  .thumb{width:46px;height:46px;border-radius:6px;background:linear-gradient(135deg,#4b6cb7,#182848)}
+  .acts{display:flex;gap:7px;margin-left:auto}
+  .acts .a{width:26px;height:26px;border-radius:6px;background:rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;font-size:13px}
+  .acts .a.hi{background:#3b82f6}
+  /* composer */
+  .seg{display:flex;background:#1a1a1e;border-radius:7px;padding:3px;width:fit-content}
+  .seg div{padding:5px 12px;font-size:12px;border-radius:5px}.seg .a{background:#3b82f6;color:#fff}
+  .att{display:flex;align-items:center;gap:9px;padding:9px;background:rgba(255,255,255,.05);border-radius:8px;margin-top:7px;font-size:12px}
+  .att .x{margin-left:auto;color:#9a9aa5}
+  .addf{font-size:12px;color:#3b82f6;margin-top:8px}
+  s{color:#6b6b75}
+</style></head><body>
+<h1>4 mejoras: anotador (emoji + email) · historial (lápiz) · compositor (sin "dueño")</h1>
+
+<h2>① Anotador — botón de emoji (popover) + ③ botón "Email"</h2>
+<div class="win">
+  <div class="tb">
+    <div class="t on">↗</div><div class="t">▭</div><div class="t">○</div><div class="t">T</div><div class="t">🖊</div>
+    <div class="t" style="background:#3b82f6">😀</div>
+    <div class="sep"></div>
+    <div class="dot" style="background:#ef4444"></div><div class="dot" style="background:#f59e0b"></div>
+    <div class="dot" style="background:#22c55e"></div><div class="dot" style="background:#fff"></div>
+  </div>
+  <div class="canvas"><div class="emoji-on-canvas">🔥</div>
+    <div class="pop" style="left:150px;top:-4px">
+      <span>😀</span><span>👍</span><span>🔥</span><span>✅</span><span>❌</span><span>⭐️</span>
+      <span>➡️</span><span>❤️</span><span>⚠️</span><span>👀</span><span>🎯</span><span>💡</span>
+    </div>
+  </div>
+  <div class="foot">
+    <div class="btn">⧉ Copiar</div>
+    <div class="btn">⤓ Guardar</div>
+    <div class="btn mail">✉ Email</div>
+    <div class="btn p">+ Copiar y añadir a Klip</div>
+  </div>
+</div>
+<p class="note"><b>Emoji:</b> botón 😀 en la barra → abre un popover con emojis frecuentes; al tocar uno se coloca en el lienzo como texto (se puede mover y redimensionar).<br><br><b>Email:</b> botón ✉ → aplana la imagen anotada y abre el compositor (modal) ya con la captura adjunta, para escribir el cuerpo y agregar más archivos.</p>
+
+<h2>② Historial — “ver en grande” ahora es un lápiz de edición ✏️</h2>
+<div class="row">
+  <div class="thumb"></div>
+  <div style="font-size:12px;color:#9a9aa5">captura.png<br><s>Hoy · 10:43</s></div>
+  <div class="acts">
+    <div class="a">⧉</div>
+    <div class="a hi">✏️</div>
+    <div class="a">⤓</div>
+    <div class="a">🔗</div>
+    <div class="a">✉</div>
+  </div>
+</div>
+<p class="note">El icono de expandir (⤢) se reemplaza por un <b>lápiz</b> ✏️ — comunica mejor que abre el editor para anotar.</p>
+
+<h2>④ Compositor — sin “Al dueño del link” cuando yo creé el klip</h2>
+<div style="display:flex;gap:24px;flex-wrap:wrap">
+  <div>
+    <div style="font-size:11px;color:#9a9aa5;margin-bottom:5px">ANTES (klip de otra persona): se ofrece elegir</div>
+    <div class="win" style="padding:14px;width:300px">
+      <div class="seg"><div class="a">Al dueño del link</div><div>A otra persona</div></div>
+      <div style="font-size:12px;margin-top:10px;color:#9a9aa5">Para: <s>dueño@empresa.com</s></div>
+    </div>
+  </div>
+  <div>
+    <div style="font-size:11px;color:#9a9aa5;margin-bottom:5px">AHORA (yo soy el creador): va directo</div>
+    <div class="win" style="padding:14px;width:300px">
+      <div style="font-size:12px;color:#9a9aa5">Para: <span style="color:#ececf0">destinatario@empresa.com</span></div>
+      <div class="att">📎 captura.png <span style="color:#9a9aa5">PNG</span> <span class="x">✕</span></div>
+      <div class="att">📎 reporte.pdf <span style="color:#9a9aa5">PDF</span> <span class="x">✕</span></div>
+      <div class="addf">+ Adjuntar archivo…</div>
+    </div>
+  </div>
+</div>
+<p class="note">El selector “Al dueño / A otra persona” solo aparece si el klip es de alguien más. Si lo creé yo, no hay “dueño” que responder → se omite y se escribe el destinatario directo. Además el compositor permite <b>varios adjuntos</b> (la captura + otros archivos).</p>
+</body></html>

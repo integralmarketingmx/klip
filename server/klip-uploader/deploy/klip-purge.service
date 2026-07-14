@@ -1,0 +1,8 @@
+[Unit]
+Description=Purga de capturas Klip con más de 3 días
+
+[Service]
+Type=oneshot
+# Borra cada slug expirado junto con sus derivados (-og.png, .json, .txt); sin huérfanos.
+Environment=KLIP_UPLOAD_DIR=/var/klip/uploads
+ExecStart=/usr/local/bin/klip-purge.sh

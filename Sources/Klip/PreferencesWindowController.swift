@@ -12,7 +12,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
             contentRect: NSRect(x: 0, y: 0, width: 500, height: 700),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered, defer: false)
-        window.title = "Preferencias de Klip"
+        window.title = L10n.t("win.prefs")
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(
             rootView: PreferencesView(onHotKeyChange: onHotKeyChange,

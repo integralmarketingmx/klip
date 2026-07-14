@@ -1,6 +1,5 @@
 import AppKit
 import SwiftUI
-import UniformTypeIdentifiers
 
 /// Panel flotante que puede recibir el foco de teclado sin volverse ventana principal.
 final class KeyablePanel: NSPanel {
@@ -10,27 +9,46 @@ final class KeyablePanel: NSPanel {
 
 /// Controla la ventana emergente del historial: vibrancy HUD, posición contextual,
 /// aparición animada, navegación por teclado, cierre al clic fuera, auto-pegado, voz y Markdown.
+@MainActor
 final class PanelController: NSObject, NSWindowDelegate {
-    private var panel: KeyablePanel!
+    var panel: KeyablePanel!                 // internal: usado por PanelController+Voice/Upload/Keyboard.swift
     private var effectView: NSVisualEffectView!
-    private let manager: ClipboardManager
-    private let selection = SelectionModel()
-    private let recorder = Recorder()
+    let manager: ClipboardManager            // internal: usado por PanelController+Capture/Voice/Upload/Actions.swift
+    let selection = SelectionModel()          // internal: usado por PanelController+Voice/Actions/Keyboard.swift
+    let recorder = Recorder()                 // internal: usado por PanelController+Voice/Actions/Keyboard.swift
     private weak var statusItem: NSStatusItem?
-    private weak var previousApp: NSRunningApplication?
+    weak var previousApp: NSRunningApplication?   // internal: usado por PanelController+Voice/Actions.swift
 
     /// Lo inyecta AppDelegate para abrir Preferencias desde el panel (estado sin API key).
     var onOpenPreferences: (() -> Void)?
+    /// Lo inyecta AppDelegate: dispara la captura+anotación (arquitectura Snap de Martin).
+    var onCaptureAnnotate: (() -> Void)?
+    /// Retiene el editor Snap mientras se anota una imagen existente del historial.
+    var snapEditor: SnapEditorController?
 
     private var keyMonitor: Any?
     private var localClickMonitor: Any?
     private var globalClickMonitor: Any?
-    private var isSavingImage = false
-    private var isRenaming = false
+    /// Nº de paneles modales (guardar/abrir) activos. Mientras sea > 0 el panel no se cierra al perder
+    /// el foco. Es un contador (no un bool) para que dos paneles solapados no se pisen el estado.
+    var modalCount = 0                        // internal: usado por PanelController+Export/Voice/Actions.swift
+    var isModalActive: Bool { modalCount > 0 }   // internal: usado por PanelController+Voice.swift
+    /// Evita lanzar una segunda exportación (PDF/ZIP) mientras una está en curso.
+    var exportInFlight = false                // internal: usado por PanelController+Export.swift
+    var isRenaming = false                    // internal: usado por PanelController+Voice/Actions/Keyboard.swift
+    /// true mientras corre `screencapture -i` (no auto-cerrar el panel por el clic de selección).
+    var capturing = false                     // internal: usado por PanelController+Capture.swift
     private let cornerRadius: CGFloat = 12
-    private var recordingPanel: NSPanel?
-    private var guideWindow: NSWindow?
-    private var uploadWindow: NSWindow?
+    var recordingPanel: NSPanel?              // internal: usado por PanelController+Voice.swift
+    var guideWindow: NSWindow?                // internal: usado por PanelController+Actions.swift
+    var uploadWindow: NSWindow?               // internal: usado por PanelController+Actions.swift
+    var annotationWindow: NSWindow?           // internal: usado por PanelController+Capture.swift
+    var annotationCloser: NSObject?           // retiene el delegate de cierre del anotador (delegate es weak)
+    /// Confirmación breve no-modal de subida; se auto-cierra a los pocos segundos.
+    var uploadToastWindow: NSWindow?          // internal: usado por PanelController+Upload.swift
+    /// Ventana del compositor de email; usada por PanelController+Email.swift.
+    var emailWindow: NSWindow?
+    var emailCloser: NSObject?                // retiene el delegate de cierre (NSWindow.delegate es weak)
 
     init(manager: ClipboardManager, statusItem: NSStatusItem?) {
         self.manager = manager
@@ -39,10 +57,19 @@ final class PanelController: NSObject, NSWindowDelegate {
         buildPanel()
     }
 
+    deinit {
+        // El ciclo panel↔delegate es seguro (PanelController es singleton de la app), se limpia por defensa.
+        panel?.delegate = nil
+    }
+
     private func buildPanel() {
         recorder.onVoiceNoteStarted = { [weak self] fn, dur in self?.manager.beginVoiceNote(audioFileName: fn, duration: dur) }
         recorder.onVoiceNoteTranscribed = { [weak self] id, text in self?.manager.finishVoiceNote(id: id, text: text) }
-        recorder.onVoiceNoteFailed = { [weak self] id in self?.manager.failVoiceNote(id: id) }
+        recorder.onVoiceNoteFailed = { [weak self] id, err in
+            self?.manager.failVoiceNote(id: id, reason: err?.message)
+            // Solo si fue problema de CLAVE ofrecemos pegar una nueva (panel A); red/otros no.
+            if let err, err.isAuth { self?.presentTranscriptionKeyAlert(noteID: id, error: err) }
+        }
         recorder.onVoiceNoteRetrying = { [weak self] id in self?.manager.markVoiceNoteTranscribing(id: id) }
 
         let root = HistoryView(
@@ -51,14 +78,23 @@ final class PanelController: NSObject, NSWindowDelegate {
             recorder: recorder,
             onPick: { [weak self] item in self?.pick(item) },
             onSaveImage: { [weak self] item in self?.saveImage(item) },
+            onAnnotate: { [weak self] item in self?.annotateExistingImage(item) },
+            onUploadLink: { [weak self] item in await self?.uploadAndCopyLink(item) },
+            onComposeEmail: { [weak self] item in self?.composeEmail(item) },
             onCopyMarkdown: { [weak self] item in self?.copyMarkdown(of: item) },
             onCopyAllMarkdown: { [weak self] in self?.copyAllMarkdown() },
-            onOpenPreferences: { [weak self] in self?.onOpenPreferences?() },
+            onOpenPreferences: { [weak self] in self?.hide(restoreFocus: false); self?.onOpenPreferences?() },
             onUploadAudio: { [weak self] in self?.uploadAudio() },
             onVoiceRecord: { [weak self] in self?.toggleVoiceRecording() },
             onShowGuide: { [weak self] in self?.showGuide() },
             onRename: { [weak self] item in self?.renameItem(item) },
-            onRetryTranscription: { [weak self] item in self?.retryTranscription(item) }
+            onRetryTranscription: { [weak self] item in self?.retryTranscription(item) },
+            onSaveAsFile: { [weak self] item in self?.saveTextAsFile(item) },
+            onCopyAsCode: { [weak self] item in self?.copyAsCode(of: item) },
+            onCaptureAnnotate: { [weak self] in self?.onCaptureAnnotate?() },
+            onCombinePDF: { [weak self] items in self?.combineSelectedToPDF(items) },
+            onExportZip: { [weak self] items in self?.exportSelectedZip(items) },
+            onAssignCollection: { [weak self] items in self?.assignSelectedToCollection(items) }
         )
 
         let panel = KeyablePanel(
@@ -96,14 +132,21 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     func toggle() { panel.isVisible ? hide() : show() }
 
-    func show() {
+    /// `activating: false` revela el panel SIN activar la app ni robar el foco del teclado: se usa
+    /// en el auto-revelado tras copiar/capturar, para no interrumpir lo que el usuario esté
+    /// escribiendo o pegando en otra ventana (el panel aparece flotando; si lo toca, se vuelve key).
+    func show(activating: Bool = true) {
         guard !panel.isVisible else { return }   // idempotente: evita reinstalar monitores
         previousApp = NSWorkspace.shared.frontmostApplication
         positionPanel()
 
         panel.alphaValue = 0
-        NSApp.activate(ignoringOtherApps: true)
-        panel.makeKeyAndOrderFront(nil)
+        if activating {
+            NSApp.activate(ignoringOtherApps: true)
+            panel.makeKeyAndOrderFront(nil)
+        } else {
+            panel.orderFrontRegardless()   // visible por encima de todo, pero sin tomar el foco
+        }
         selection.reset()
         selection.openToken &+= 1                 // dispara reseteo de búsqueda/foco en la vista
         if recordingPanel?.isVisible != true { recorder.reset() }  // no cerrar el popup de voz si está abierto
@@ -136,7 +179,8 @@ final class PanelController: NSObject, NSWindowDelegate {
             matching: [.leftMouseDown, .rightMouseDown]) { e in e }
         globalClickMonitor = NSEvent.addGlobalMonitorForEvents(
             matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            guard let self, !self.isSavingImage, !self.isRenaming, !self.recorder.isRecording else { return }
+            guard let self, !self.isModalActive, !self.isRenaming, !self.recorder.isRecording,
+                  !self.capturing, !Settings.shared.alwaysOnTop else { return }   // fijado: no auto-cerrar
             self.hide(restoreFocus: false)
         }
     }
@@ -148,36 +192,6 @@ final class PanelController: NSObject, NSWindowDelegate {
         keyMonitor = nil; localClickMonitor = nil; globalClickMonitor = nil
     }
 
-    private func handleKeyDown(_ event: NSEvent) -> NSEvent? {
-        if isRenaming { return event }   // el diálogo de renombrar maneja sus propias teclas
-        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-
-        if event.keyCode == 53 {   // Esc (el monitor siempre corre en el hilo principal)
-            if recorder.state == .recording {
-                MainActor.assumeIsolated { recorder.cancel() }   // aborta la grabación, no cierra
-            } else if !recorder.isRecording {
-                hide(restoreFocus: true)                         // no cerrar mientras transcribe
-            }
-            return nil
-        }
-
-        // ⌘1..⌘9 → selección rápida + pegar (solo si existe ese índice).
-        if flags.contains(.command),
-           let ch = event.charactersIgnoringModifiers,
-           let n = Int(ch), (1...9).contains(n) {
-            if n <= selection.visibleCount { selection.selectQuick(n); pickSelected() }
-            return nil
-        }
-        if flags.contains(.command) { return event }   // no romper ⌘A/⌘C/⌘V en la búsqueda
-
-        switch event.keyCode {
-        case 125: selection.moveDown(); return nil    // ↓
-        case 126: selection.moveUp();   return nil    // ↑
-        case 36, 76: pickSelected();    return nil    // Return / Enter
-        default: return event
-        }
-    }
-
     // MARK: - Posicionamiento
 
     private func positionPanel() {
@@ -186,239 +200,34 @@ final class PanelController: NSObject, NSWindowDelegate {
         if let btnWin = statusItem?.button?.window {
             let b = btnWin.frame
             let screen = btnWin.screen ?? NSScreen.main ?? NSScreen.screens.first!
-            panel.setFrameOrigin(clamp(x: b.midX - size.width / 2,
-                                       y: b.minY - gap - size.height, size: size, into: screen.visibleFrame))
+            panel.setFrameOrigin(PanelPositioner.originBelowStatusButton(
+                buttonFrame: b, size: size, gap: gap, visibleFrame: screen.visibleFrame))
         } else {
             let m = NSEvent.mouseLocation
             let screen = NSScreen.screens.first { $0.frame.contains(m) }
                 ?? NSScreen.main ?? NSScreen.screens.first!
-            panel.setFrameOrigin(clamp(x: m.x - size.width / 2,
-                                       y: m.y - size.height - gap, size: size, into: screen.visibleFrame))
+            panel.setFrameOrigin(PanelPositioner.originBelowMouse(
+                mouseLocation: m, size: size, gap: gap, visibleFrame: screen.visibleFrame))
         }
     }
 
-    private func clamp(x: CGFloat, y: CGFloat, size: NSSize, into vf: NSRect) -> NSPoint {
-        let hiX = max(vf.minX + 8, vf.maxX - size.width - 8)   // garantiza lo <= hi en pantallas pequeñas
-        let hiY = max(vf.minY + 8, vf.maxY - size.height - 8)
-        let cx = min(max(x, vf.minX + 8), hiX)
-        let cy = min(max(y, vf.minY + 8), hiY)
-        return NSPoint(x: cx, y: cy)
-    }
-
-    // MARK: - Acciones
-
-    private func pick(_ item: ClipboardItem) {
-        // Nota de voz sin transcripción: no hay texto que pegar → reproducir el audio y dejar el panel abierto.
-        if item.kind == .text, (item.text?.isEmpty ?? true) {
-            if let af = item.audioFileName { AudioPlayer.shared.toggle(fileName: af) }
-            return
-        }
-        manager.copyToPasteboard(item)
-        let target = previousApp
-        hide(restoreFocus: false)
-        if item.isCredential == true { target?.activate() }   // no auto-pegar secretos: solo copiar + devolver foco
-        else { pasteOrRestore(target) }
-    }
-
-    private func pickSelected() {
-        guard let id = selection.selectedID,
-              let item = manager.items.first(where: { $0.id == id }) else { return }
-        pick(item)
-    }
-
-    /// Pega automáticamente en la app previa (si hay permiso y app destino), o solo restaura el foco.
-    private func pasteOrRestore(_ target: NSRunningApplication?) {
-        guard let target, !target.isTerminated else { return }   // sin destino: solo queda copiado
-        if Settings.shared.autoPaste { Paster.paste(into: target) }
-        else { target.activate() }
-    }
-
-    private func copyMarkdown(of item: ClipboardItem) {
-        let md = Markdownify.fromText(item.text ?? "")
-        let target = previousApp
-        manager.setClipboardText(md)
-        hide(restoreFocus: false)
-        pasteOrRestore(target)
-    }
-
-    private func copyAllMarkdown() {
-        let md = MarkdownExporter.history(manager.items)
-        let target = previousApp
-        manager.setClipboardText(md)
-        hide(restoreFocus: false)
-        pasteOrRestore(target)
-    }
-
-    /// Atajo global de voz: abre el popup dedicado de grabación y alterna grabar/detener.
-    func toggleVoiceRecording() {
-        MainActor.assumeIsolated {
-            if recorder.state == .recording { recorder.stop(); return }
-            guard !recorder.isRecording else { return }
-            if recordingPanel?.isVisible != true {   // al re-grabar con el popup abierto, conservar la app original
-                previousApp = NSWorkspace.shared.frontmostApplication
-            }
-            showRecordingPopup()
-            recorder.start()
-        }
-    }
-
-    private func showRecordingPopup() {
-        if recordingPanel == nil {
-            let view = RecordingView(
-                recorder: recorder,
-                onStop: { [weak self] in MainActor.assumeIsolated { self?.recorder.stop() } },
-                onCancel: { [weak self] in MainActor.assumeIsolated { self?.recorder.cancel() } },
-                onClose: { [weak self] in self?.closeRecordingPopup() },
-                onOpenPreferences: { [weak self] in self?.onOpenPreferences?() }
-            )
-            let p = KeyablePanel(contentRect: NSRect(x: 0, y: 0, width: 360, height: 320),
-                                 styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-            p.isOpaque = false; p.backgroundColor = .clear; p.hasShadow = true
-            p.level = .floating; p.isReleasedWhenClosed = false
-            p.hidesOnDeactivate = false   // no ocultarse al volver el foco a la app del usuario
-            let fx = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: 360, height: 320))
-            fx.material = .hudWindow; fx.blendingMode = .behindWindow; fx.state = .active
-            fx.wantsLayer = true; fx.layer?.cornerRadius = 16; fx.layer?.masksToBounds = true
-            fx.autoresizingMask = [.width, .height]
-            let host = NSHostingView(rootView: view)
-            host.frame = fx.bounds; host.autoresizingMask = [.width, .height]; fx.addSubview(host)
-            p.contentView = fx
-            recordingPanel = p
-        }
-        if let screen = NSScreen.main, let p = recordingPanel {
-            let vf = screen.visibleFrame; let s = p.frame.size
-            p.setFrameOrigin(NSPoint(x: vf.midX - s.width / 2, y: vf.midY + 120))
-        }
+    func showAlert(_ title: String, _ info: String) {   // internal: usado por PanelController+Export/Voice/Upload/Actions.swift
+        let a = NSAlert(); a.messageText = title; a.informativeText = info
+        a.addButton(withTitle: "OK")
         NSApp.activate(ignoringOtherApps: true)
-        recordingPanel?.makeKeyAndOrderFront(nil)
-    }
-
-    private func closeRecordingPopup() {
-        recordingPanel?.orderOut(nil)
-        previousApp?.activate()   // la transcripción corre en 2º plano; solo devolvemos el foco
-    }
-
-    func showGuide() {
-        if guideWindow == nil {
-            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: 560),
-                             styleMask: [.titled, .closable], backing: .buffered, defer: false)
-            w.title = "Guía de Klip"
-            w.isReleasedWhenClosed = false
-            w.contentView = NSHostingView(rootView: GuideView())
-            w.center()
-            guideWindow = w
-        }
-        NSApp.activate(ignoringOtherApps: true)
-        guideWindow?.makeKeyAndOrderFront(nil)
-    }
-
-    private func uploadAudio() {
-        // El recorder.state es compartido; limpia un .error/.missingAPIKey previo para mostrar la dropzone.
-        if recorder.state != .recording { recorder.reset() }
-        showUploadWindow()
-    }
-
-    private func showUploadWindow() {
-        if uploadWindow == nil {
-            let view = UploadView(
-                recorder: recorder,
-                onChoose: { [weak self] in self?.chooseAudioFiles() },
-                onFiles: { [weak self] urls in MainActor.assumeIsolated { self?.submitAudioFiles(urls) } },
-                onClose: { [weak self] in self?.uploadWindow?.orderOut(nil) },
-                onOpenPreferences: { [weak self] in self?.onOpenPreferences?() }
-            )
-            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 300),
-                             styleMask: [.titled, .closable], backing: .buffered, defer: false)
-            w.title = "Subir audio"
-            w.isReleasedWhenClosed = false
-            w.contentView = NSHostingView(rootView: view)
-            w.center()
-            uploadWindow = w
-        }
-        NSApp.activate(ignoringOtherApps: true)
-        uploadWindow?.makeKeyAndOrderFront(nil)
-    }
-
-    private func chooseAudioFiles() {
-        let p = NSOpenPanel()
-        var types: [UTType] = [.audio]
-        for ext in ["opus", "oga"] {   // .opus de WhatsApp no siempre conforma a public.audio
-            if let t = UTType(filenameExtension: ext) { types.append(t) }
-        }
-        p.allowedContentTypes = types
-        p.allowsMultipleSelection = true
-        p.canChooseDirectories = false
-        NSApp.activate(ignoringOtherApps: true)
-        p.begin { [weak self] resp in
-            guard resp == .OK, !p.urls.isEmpty else { return }
-            MainActor.assumeIsolated { self?.submitAudioFiles(p.urls) }
-        }
-    }
-
-    /// Manda los audios a transcribir (en 2º plano). La ventana queda abierta mostrando el progreso
-    /// ("Transcribiendo N…"); el usuario la cierra cuando quiera (las notas aparecen en el historial).
-    @MainActor
-    private func submitAudioFiles(_ urls: [URL]) {
-        recorder.transcribeFiles(urls)
-    }
-
-    /// Reintenta transcribir una nota de voz fallida (usa su audio guardado).
-    private func retryTranscription(_ item: ClipboardItem) {
-        guard let af = item.audioFileName, Storage.shared.audioExists(fileName: af) else { return }
-        // Evita un segundo reintento (doble-clic) mientras ya está en curso → no duplica la llamada a la API.
-        guard manager.items.first(where: { $0.id == item.id })?.preview != ClipboardManager.voiceTranscribing else { return }
-        guard AIProvider.hasKey else { onOpenPreferences?(); return }   // sin clave: ofrecer configurarla
-        MainActor.assumeIsolated { recorder.retry(itemID: item.id, audioFileName: af) }
-    }
-
-    /// Diálogo para ponerle (o cambiarle) el nombre a cualquier elemento. Buscable después.
-    private func renameItem(_ item: ClipboardItem) {
-        let alert = NSAlert()
-        alert.messageText = L10n.t("rename.title")
-        alert.informativeText = L10n.t("rename.info")
-        alert.addButton(withTitle: L10n.t("rename.save"))
-        let cancel = alert.addButton(withTitle: L10n.t("common.cancel"))
-        cancel.keyEquivalent = "\u{1b}"   // Esc cancela (no se asigna solo en español)
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
-        field.stringValue = item.name ?? ""
-        field.placeholderString = L10n.t("rename.placeholder")
-        alert.accessoryView = field
-        alert.window.initialFirstResponder = field
-
-        isRenaming = true
-        NSApp.activate(ignoringOtherApps: true)
-        let resp = alert.runModal()
-        isRenaming = false
-        if resp == .alertFirstButtonReturn { manager.rename(item, to: field.stringValue) }
-        if panel.isVisible {
-            panel.makeKeyAndOrderFront(nil)
-            selection.focusToken &+= 1   // devolver el foco al buscador (sin limpiar búsqueda/filtro)
-        }
-    }
-
-    private func saveImage(_ item: ClipboardItem) {
-        guard item.kind == .image, let fn = item.imageFileName,
-              let img = Storage.shared.loadImage(fileName: fn),
-              let png = Storage.shared.pngData(from: img) else { return }
-        let sp = NSSavePanel()
-        sp.allowedContentTypes = [.png]
-        sp.nameFieldStringValue = "captura.png"
-        sp.canCreateDirectories = true
-        isSavingImage = true
-        NSApp.activate(ignoringOtherApps: true)
-        sp.begin { [weak self] resp in
-            if resp == .OK, let url = sp.url { try? png.write(to: url, options: .atomic) }
-            self?.isSavingImage = false
-        }
+        a.runModal()
     }
 
     // MARK: - NSWindowDelegate (respaldo de cierre al perder el foco)
 
     func windowDidResignKey(_ notification: Notification) {
-        guard !isSavingImage, !isRenaming, !recorder.isRecording else { return }
+        // Fijado (always on top) o capturando: no cerrar al perder el foco.
+        guard !isModalActive, !isRenaming, !recorder.isRecording,
+              !capturing, !Settings.shared.alwaysOnTop else { return }
         DispatchQueue.main.async { [weak self] in
-            guard let self, self.panel.isVisible, !self.isSavingImage, !self.isRenaming,
-                  !self.recorder.isRecording, !self.panel.isKeyWindow else { return }
+            guard let self, self.panel.isVisible, !self.isModalActive, !self.isRenaming,
+                  !self.recorder.isRecording, !self.capturing, !Settings.shared.alwaysOnTop,
+                  !self.panel.isKeyWindow else { return }
             self.hide(restoreFocus: false)
         }
     }

@@ -1,11 +1,21 @@
 import AppKit
 
+/// Ventana-escudo que SÍ puede volverse key (a diferencia de un NSWindow borderless plano, que por
+/// defecto no recibe eventos de teclado → Esc no cancelaría). Imprescindible para que la cancelación
+/// por teclado funcione cuando la ventana está al nivel del escudo del sistema.
+private final class ShieldWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+}
+
 /// Ventana sin borde a pantalla completa que muestra la captura congelada y atenuada, y deja
 /// al usuario arrastrar una región. Al soltar, recorta y entrega un NSImage de la zona elegida.
 final class CaptureOverlayController {
     private var window: NSWindow?
     private let shot: DisplayShot
     private let onComplete: (NSImage?) -> Void
+    private var resolved = false               // evita doble-dismiss / firing tras superseder
+    private var escMonitor: Any?               // red de seguridad: Esc aunque la ventana no sea key
 
     init(shot: DisplayShot, onComplete: @escaping (NSImage?) -> Void) {
         self.shot = shot
@@ -14,7 +24,7 @@ final class CaptureOverlayController {
 
     func present() {
         let frame = shot.screen.frame
-        let win = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        let win = ShieldWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
         win.isOpaque = false
         win.backgroundColor = .clear
         win.level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()))
@@ -33,11 +43,33 @@ final class CaptureOverlayController {
         NSApp.activate(ignoringOtherApps: true)
         win.makeFirstResponder(view)
         self.window = win
+
+        // Red de seguridad: aunque por cualquier razón la ventana no llegue a ser key, Esc (keyCode 53)
+        // siempre cancela. Sin esto, un fallo de foco dejaría al usuario sin salida por teclado.
+        escMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if event.keyCode == 53 { self?.dismiss(nil); return nil }
+            return event
+        }
+    }
+
+    /// Cierra el overlay SIN entregar resultado (para cuando un flujo nuevo lo supersede): así nunca
+    /// queda una ventana-escudo huérfana a nivel del escudo del sistema bloqueando todo el input.
+    func dismissExternally() {
+        guard !resolved else { return }
+        resolved = true
+        teardown()
+    }
+
+    private func teardown() {
+        if let m = escMonitor { NSEvent.removeMonitor(m); escMonitor = nil }
+        window?.orderOut(nil)
+        window = nil
     }
 
     /// Convierte la selección (puntos, origen abajo-izquierda de la vista) a píxeles del bitmap
     /// (origen arriba-izquierda) y recorta el CGImage.
     private func finish(selectionInView rect: NSRect) {
+        guard !resolved else { return }
         guard rect.width >= 4, rect.height >= 4 else { dismiss(nil); return }
         let scale = shot.scale
         let viewH = shot.screen.frame.height
@@ -56,8 +88,9 @@ final class CaptureOverlayController {
     }
 
     private func dismiss(_ image: NSImage?) {
-        window?.orderOut(nil)
-        window = nil
+        guard !resolved else { return }
+        resolved = true
+        teardown()
         onComplete(image)
     }
 }
@@ -93,7 +126,10 @@ private final class CaptureOverlayView: NSView {
         NSColor.black.withAlphaComponent(0.45).setFill()
         bounds.fill()
 
-        guard currentRect.width > 0, currentRect.height > 0 else { return }
+        guard currentRect.width > 0, currentRect.height > 0 else {
+            drawHint()   // aún no hay selección: explicar qué hacer
+            return
+        }
 
         // "Agujero": vuelve a pintar la zona seleccionada sin atenuar.
         bgImage.draw(in: currentRect, from: pixelSourceRect(for: currentRect), operation: .copy, fraction: 1)
@@ -110,6 +146,23 @@ private final class CaptureOverlayView: NSView {
     /// Rect fuente (en puntos de la imagen, origen abajo-izquierda) correspondiente a la zona de la vista.
     private func pixelSourceRect(for rect: NSRect) -> NSRect { rect }
 
+    /// Indicación centrada mientras el usuario aún no ha arrastrado nada (para que el overlay se entienda).
+    private func drawHint() {
+        let text = L10n.t("capture.hint")
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 14, weight: .semibold),
+            .foregroundColor: NSColor.white
+        ]
+        let size = (text as NSString).size(withAttributes: attrs)
+        let padX: CGFloat = 18, padY: CGFloat = 11
+        let pill = NSRect(x: bounds.midX - (size.width + padX * 2) / 2,
+                          y: bounds.midY - (size.height + padY * 2) / 2,
+                          width: size.width + padX * 2, height: size.height + padY * 2)
+        NSColor.black.withAlphaComponent(0.7).setFill()
+        NSBezierPath(roundedRect: pill, xRadius: 11, yRadius: 11).fill()
+        (text as NSString).draw(at: NSPoint(x: pill.minX + padX, y: pill.minY + padY), withAttributes: attrs)
+    }
+
     private func drawDimensionBadge(for rect: NSRect) {
         let wPx = Int(rect.width * shot.scale)
         let hPx = Int(rect.height * shot.scale)
@@ -125,7 +178,7 @@ private final class CaptureOverlayView: NSView {
         // Si no cabe arriba, colócalo dentro/abajo.
         if badge.maxY > bounds.maxY { badge.origin.y = rect.minY - badge.height - 6 }
         if badge.minY < bounds.minY { badge.origin.y = rect.minY + 6 }
-        badge.origin.x = min(badge.origin.x, bounds.maxX - badge.width)
+        badge.origin.x = max(bounds.minX, min(badge.origin.x, bounds.maxX - badge.width))
 
         NSColor.black.withAlphaComponent(0.75).setFill()
         NSBezierPath(roundedRect: badge, xRadius: 4, yRadius: 4).fill()
@@ -158,4 +211,7 @@ private final class CaptureOverlayView: NSView {
         if event.keyCode == 53 { onCancel() }   // Esc
         else { super.keyDown(with: event) }
     }
+
+    /// Esc por la cadena de responders estándar (además del keyDown y del monitor de seguridad).
+    override func cancelOperation(_ sender: Any?) { onCancel() }
 }

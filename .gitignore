@@ -11,3 +11,10 @@ Package.resolved
 
 # Artefacto compilado (se genera con ./build.sh)
 *.app/
+
+# Artefactos de empaquetado (no versionar binarios)
+*.dmg
+
+# Go: binario compilado del uploader
+/server/klip-uploader/klip-uploader
+.gstack/

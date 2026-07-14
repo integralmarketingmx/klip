@@ -1,0 +1,24 @@
+# Añade este bloque a tu Caddyfile (o como vhost en Easypanel).
+# Sirve las imágenes subidas como estático y proxya /upload al binario Go.
+# Caddy gestiona HTTPS automáticamente para el dominio.
+
+klip.integralmarketing.agency {
+	encode gzip
+
+	# Endpoint de subida -> binario Go en localhost:8080
+	@upload path /upload
+	reverse_proxy @upload 127.0.0.1:8080
+
+	# Las imágenes públicas se sirven como archivos estáticos
+	root * /var/klip/uploads
+	file_server
+
+	# Límite de tamaño del cuerpo (defensa extra; el Go también limita a 25MB)
+	request_body {
+		max_size 25MB
+	}
+
+	# Cache largo para los assets (expiran por purga, no por cache)
+	header /*.png Cache-Control "public, max-age=259200"
+	header /*.jpg Cache-Control "public, max-age=259200"
+}

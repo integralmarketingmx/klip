@@ -138,6 +138,21 @@ final class Settings: ObservableObject {
         set { d.set(newValue, forKey: "hasSeenWelcome") }
     }
 
+    // MARK: - Klip Email/OAuth/Upload (additive; MailMethod lives in Settings+KlipEmail.swift)
+    // Real @Published storage with inline UserDefaults defaults so `$settings.x` bindings work
+    // without editing init(). Keys match the original Klip branch.
+    @Published var mailMethod: MailMethod = MailMethod(rawValue: UserDefaults.standard.string(forKey: "mailMethod") ?? "oauth") ?? .oauth { didSet { UserDefaults.standard.set(mailMethod.rawValue, forKey: "mailMethod") } }
+    @Published var mailFrom: String = UserDefaults.standard.string(forKey: "mailFrom") ?? "" { didSet { UserDefaults.standard.set(mailFrom, forKey: "mailFrom") } }
+    @Published var smtpHost: String = UserDefaults.standard.string(forKey: "smtpHost") ?? "" { didSet { UserDefaults.standard.set(smtpHost, forKey: "smtpHost") } }
+    @Published var smtpPort: Int = (UserDefaults.standard.object(forKey: "smtpPort") as? Int) ?? 587 { didSet { UserDefaults.standard.set(smtpPort, forKey: "smtpPort") } }
+    @Published var smtpUser: String = UserDefaults.standard.string(forKey: "smtpUser") ?? "" { didSet { UserDefaults.standard.set(smtpUser, forKey: "smtpUser") } }
+    @Published var smtpFrom: String = UserDefaults.standard.string(forKey: "smtpFrom") ?? "" { didSet { UserDefaults.standard.set(smtpFrom, forKey: "smtpFrom") } }
+    @Published var uploadEndpoint: String = UserDefaults.standard.string(forKey: "uploadEndpoint") ?? "" { didSet { UserDefaults.standard.set(uploadEndpoint, forKey: "uploadEndpoint") } }
+    @Published var mailApiToken: String = UserDefaults.standard.string(forKey: "mailApiToken") ?? "" { didSet { UserDefaults.standard.set(mailApiToken, forKey: "mailApiToken") } }
+    @Published var googleClientId: String = UserDefaults.standard.string(forKey: "googleClientId") ?? "" { didSet { UserDefaults.standard.set(googleClientId, forKey: "googleClientId") } }
+    @Published var googleClientSecret: String = UserDefaults.standard.string(forKey: "googleClientSecret") ?? "" { didSet { UserDefaults.standard.set(googleClientSecret, forKey: "googleClientSecret") } }
+    @Published var googleAccountEmail: String = UserDefaults.standard.string(forKey: "googleAccountEmail") ?? "" { didSet { UserDefaults.standard.set(googleAccountEmail, forKey: "googleAccountEmail") } }
+
     private enum K {
         static let maxItems   = "maxItems"
         static let keyCode    = "hotKeyCode"

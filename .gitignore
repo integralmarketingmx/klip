@@ -19,3 +19,5 @@ skills-lock.json
 
 # Local security-audit reports (gstack) — stay on the machine, never pushed
 .gstack/
+*.dmg
+server/klip-uploader/klip-uploader

@@ -680,6 +680,10 @@ struct ItemRow: View {
                 // Display only — the real handler is PanelController's key monitor. Without this the
                 // monitor's shortcuts are invisible and read as undiscoverable trivia.
                 .keyboardShortcut("f", modifiers: [.command, .shift])
+            // Klip-only: send an image capture by email (composer window).
+            if item.kind == .image {
+                Button { KlipEmail.compose(item) } label: { Label(L10n.t("email.send"), systemImage: "envelope") }
+            }
             Divider()
             moreMenu
         }

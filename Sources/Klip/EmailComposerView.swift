@@ -60,21 +60,21 @@ struct EmailComposerView: View {
                     // El selector "al dueño / a otra persona" solo aparece cuando hay un dueño del
                     // link (klip de otra persona). Si yo soy el creador, voy directo al destinatario.
                     if !ownerEmail.isEmpty { audienceSegment }
-                    field(label: "Para", text: $to, placeholder: "destinatario@empresa.com")
+                    field(label: L10n.t("email.to"), text: $to, placeholder: L10n.t("email.to.ph"))
                     HStack {
                         Spacer()
-                        Button(showCCBCC ? "Ocultar CC · CCO" : "CC · CCO") { showCCBCC.toggle() }
+                        Button(showCCBCC ? L10n.t("email.ccbcc.hide") : L10n.t("email.ccbcc.show")) { showCCBCC.toggle() }
                             .buttonStyle(.link).font(.caption)
                     }
                     if showCCBCC {
-                        field(label: "CC", text: $cc, placeholder: "copias visibles, separadas por coma")
-                        field(label: "CCO", text: $bcc, placeholder: "copias ocultas (bcc)")
+                        field(label: L10n.t("email.cc"), text: $cc, placeholder: L10n.t("email.cc.ph"))
+                        field(label: L10n.t("email.bcc"), text: $bcc, placeholder: L10n.t("email.bcc.ph"))
                     }
-                    field(label: "De", text: $settings.mailFrom, placeholder: "tu@empresa.com")
-                    field(label: "Asunto", text: $subject, placeholder: "Asunto")
+                    field(label: L10n.t("email.from"), text: $settings.mailFrom, placeholder: L10n.t("email.from.ph"))
+                    field(label: L10n.t("email.subject"), text: $subject, placeholder: L10n.t("email.subject.ph"))
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Notas / mensaje (cuerpo del correo)")
+                        Text(L10n.t("email.body"))
                             .font(.caption).foregroundStyle(.secondary)
                         TextEditor(text: $bodyText)
                             .frame(minHeight: 90)
@@ -83,7 +83,7 @@ struct EmailComposerView: View {
                     }
 
                     if attachment != nil {
-                        attachmentRow(name: "captura.png", detail: "PNG · se adjunta al correo", onRemove: nil)
+                        attachmentRow(name: L10n.t("email.attachName"), detail: L10n.t("email.attachDetail"), onRemove: nil)
                     }
                     ForEach(extraAttachments) { att in
                         attachmentRow(name: att.name,
@@ -91,7 +91,7 @@ struct EmailComposerView: View {
                                       onRemove: { extraAttachments.removeAll { $0.id == att.id } })
                     }
                     Button { addAttachment() } label: {
-                        Label("Adjuntar archivo…", systemImage: "paperclip.badge.plus")
+                        Label(L10n.t("email.attach"), systemImage: "paperclip.badge.plus")
                     }
                     .buttonStyle(.link).font(.caption)
 
@@ -114,7 +114,7 @@ struct EmailComposerView: View {
                 .frame(width: 24, height: 24)
                 .background(LinearGradient(colors: [.blue, .purple], startPoint: .topLeading, endPoint: .bottomTrailing))
                 .cornerRadius(6)
-            Text("Enviar captura").font(.headline)
+            Text(L10n.t("email.header")).font(.headline)
             Spacer()
             Button { onClose() } label: { Image(systemName: "xmark") }
                 .buttonStyle(.plain).foregroundStyle(.secondary)
@@ -124,8 +124,8 @@ struct EmailComposerView: View {
 
     private var audienceSegment: some View {
         Picker("", selection: $audience) {
-            Text("Al dueño del link").tag(Audience.owner)
-            Text("A otra persona").tag(Audience.other)
+            Text(L10n.t("email.audience.owner")).tag(Audience.owner)
+            Text(L10n.t("email.audience.other")).tag(Audience.other)
         }
         .pickerStyle(.segmented)
         .onChange(of: audience) { _, newValue in
@@ -147,9 +147,9 @@ struct EmailComposerView: View {
     /// Texto del pie según el método elegido.
     private var methodHint: String {
         switch settings.mailMethod {
-        case .oauth:      return "🔒 Se envía con tu cuenta de Google Workspace conectada (solo tú, como remitente)."
-        case .smtp:       return "🔒 Se envía por tu servidor SMTP."
-        case .systemMail: return "✉️ Se abrirá el compositor de Mail del sistema."
+        case .oauth:      return L10n.t("email.method.oauth")
+        case .smtp:       return L10n.t("email.method.smtp")
+        case .systemMail: return L10n.t("email.method.system")
         }
     }
 
@@ -158,15 +158,15 @@ struct EmailComposerView: View {
             Text(methodHint)
                 .font(.caption).foregroundStyle(.secondary)
             Spacer()
-            Button("Cancelar") { onClose() }
+            Button(L10n.t("common.cancel")) { onClose() }
             // Botón directo al Mail del sistema (método D), siempre disponible como atajo.
-            Button("Mail del sistema") { sendWithSystemMail() }
-                .help("Abre el compositor de correo nativo con la imagen adjunta.")
+            Button(L10n.t("email.systemMail")) { sendWithSystemMail() }
+                .help(L10n.t("email.systemMail.help"))
             Button {
                 Task { await primarySend() }
             } label: {
                 if sending { ProgressView().controlSize(.small) }
-                else { Text(sent ? "Enviado ✓" : "Enviar ✉") }
+                else { Text(sent ? L10n.t("email.sent") : L10n.t("email.send")) }
             }
             .buttonStyle(.borderedProminent)
             .disabled(sending || sent)
@@ -190,14 +190,14 @@ struct EmailComposerView: View {
             body: bodyText,
             recipients: split(to) + split(cc) + split(bcc),
             png: attachment,
-            attachmentName: "captura.png"
+            attachmentName: L10n.t("email.attachName")
         )
         if ok {
             // Hand-off al Mail del sistema: solo PRESENTAMOS el compositor nativo; no sabemos si el
             // usuario realmente envió. Cerramos sin marcar "enviado ✓" (sería engañoso).
             onClose()
         } else {
-            errorText = "No se pudo abrir el Mail del sistema. ¿Tienes un cliente de correo configurado?"
+            errorText = L10n.t("email.err.system")
         }
     }
 
@@ -220,7 +220,7 @@ struct EmailComposerView: View {
         case .smtp:
             let pass = SecretStore.get(.smtp) ?? ""
             guard !settings.smtpHost.isEmpty, !settings.smtpUser.isEmpty, !pass.isEmpty else {
-                errorText = "Faltan datos SMTP (host, usuario o contraseña). Configúralos en Preferencias → Email."
+                errorText = L10n.t("email.err.smtp")
                 return
             }
             let smtpFrom = settings.smtpFrom.isEmpty ? draft.from : settings.smtpFrom
@@ -288,7 +288,7 @@ struct EmailComposerView: View {
         for url in panel.urls {
             guard let data = try? Data(contentsOf: url) else { continue }
             if data.count > maxBytes {
-                errorText = "“\(url.lastPathComponent)” supera 20 MB y no se adjuntó."
+                errorText = String(format: L10n.t("email.err.tooBig"), url.lastPathComponent)
                 continue
             }
             let mime = mimeType(for: url)

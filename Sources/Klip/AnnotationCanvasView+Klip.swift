@@ -127,16 +127,16 @@ extension AnnotationCanvasView {
     override func menu(for event: NSEvent) -> NSMenu? {
         let menu = NSMenu()
         menu.autoenablesItems = false
-        menu.addItem(withTitle: "Copiar", action: #selector(ctxCopy), keyEquivalent: "c")
-        let undoIt = menu.addItem(withTitle: "Deshacer", action: #selector(ctxUndo), keyEquivalent: "z")
+        menu.addItem(withTitle: L10n.t("ctx.copy"), action: #selector(ctxCopy), keyEquivalent: "c")
+        let undoIt = menu.addItem(withTitle: L10n.t("ctx.undo"), action: #selector(ctxUndo), keyEquivalent: "z")
         undoIt.isEnabled = !annotations.isEmpty || clearedBackup != nil
-        let redoIt = menu.addItem(withTitle: "Rehacer", action: #selector(ctxRedo), keyEquivalent: "Z")
+        let redoIt = menu.addItem(withTitle: L10n.t("ctx.redo"), action: #selector(ctxRedo), keyEquivalent: "Z")
         redoIt.isEnabled = !redoStack.isEmpty
         if selectedID != nil {
-            menu.addItem(withTitle: "Borrar selección", action: #selector(ctxDelete), keyEquivalent: "\u{8}")
+            menu.addItem(withTitle: L10n.t("ctx.deleteSel"), action: #selector(ctxDelete), keyEquivalent: "\u{8}")
         }
         menu.addItem(.separator())
-        let toolsItem = menu.addItem(withTitle: "Herramienta", action: nil, keyEquivalent: "")
+        let toolsItem = menu.addItem(withTitle: L10n.t("ctx.tool"), action: nil, keyEquivalent: "")
         let sub = NSMenu()
         sub.autoenablesItems = false
         for t in SnapTool.allCases {
@@ -147,7 +147,7 @@ extension AnnotationCanvasView {
         }
         toolsItem.submenu = sub
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Limpiar todo", action: #selector(ctxClear), keyEquivalent: "")
+        menu.addItem(withTitle: L10n.t("ctx.clear"), action: #selector(ctxClear), keyEquivalent: "")
         for item in menu.items where item.action != nil { item.target = self }
         return menu
     }

@@ -193,7 +193,7 @@ final class AnnotationCanvasView: NSView, NSTextFieldDelegate {
         field.font = font
         field.textColor = color
         field.focusRingType = .none
-        field.placeholderString = "Escribe…"
+        field.placeholderString = L10n.t("annot.textPlaceholder")
         field.stringValue = existing?.text ?? ""
         field.target = self
         field.action = #selector(textFieldCommitted(_:))

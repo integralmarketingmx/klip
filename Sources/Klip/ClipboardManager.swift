@@ -45,7 +45,7 @@ final class ClipboardManager: ObservableObject, ClipboardStoring {
     /// si conservan su audio, pasan a "sin transcripción" (recuperable); si no, se descartan.
     private func reconcileVoiceNotesOnLoad() {
         var changed = false
-        for idx in items.indices where items[idx].isVoiceNote == true && items[idx].preview == Self.voiceTranscribing {
+        for idx in items.indices where items[idx].isVoiceNote == true && Self.voiceTranscribingValues.contains(items[idx].preview) {
             if let af = items[idx].audioFileName, storage.audioExists(fileName: af) {
                 items[idx].text = nil
                 items[idx].preview = Self.voiceFailed
@@ -55,7 +55,7 @@ final class ClipboardManager: ObservableObject, ClipboardStoring {
             changed = true
         }
         let before = items.count
-        items.removeAll { $0.isVoiceNote == true && $0.preview == Self.voiceTranscribing && $0.audioFileName == nil }
+        items.removeAll { $0.isVoiceNote == true && Self.voiceTranscribingValues.contains($0.preview) && $0.audioFileName == nil }
         if changed || items.count != before { storage.saveItems(items) }
     }
 
@@ -123,7 +123,14 @@ final class ClipboardManager: ObservableObject, ClipboardStoring {
         }
         if let str = pb.string(forType: .string),
            !str.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            addText(str, source: source, remote: remote)
+            // "Pegar limpio": si el copy trae texto rico, guarda Markdown limpio (mantiene bold/italic +
+            // emojis, tira colores/fondo/fuentes). Copias planas quedan igual. Si el limpiado sale vacío
+            // (p.ej. RTF solo-imagen), NO reemplaza el texto plano del usuario.
+            let cleaned = settings.cleanCapture ? RichText.cleanMarkdown(from: pb) : nil
+            let text = (cleaned?.isEmpty == false) ? cleaned! : str
+            // dedupAlso: el mismo contenido copiado plano vs rico no debe crear dos filas ni
+            // partir la señal de frecuencia (C7).
+            addText(text, dedupAlso: text == str ? nil : str, source: source, remote: remote)
         }
     }
 
@@ -133,8 +140,11 @@ final class ClipboardManager: ObservableObject, ClipboardStoring {
             || types.contains(NSPasteboard.PasteboardType("public.jpeg"))
     }
 
-    private func addText(_ text: String, source: CaptureSource, remote: Bool) {
-        if let idx = items.firstIndex(where: { $0.kind == .text && $0.isVoiceNote != true && $0.text == text }) {
+    /// `dedupAlso`: variante alternativa del mismo contenido (p.ej. el texto plano cuando `text` es
+    /// el Markdown limpio) — si ya existe un item con cualquiera de las dos, se refresca en vez de duplicar.
+    private func addText(_ text: String, dedupAlso alt: String? = nil, source: CaptureSource, remote: Bool) {
+        if let idx = items.firstIndex(where: { $0.kind == .text && $0.isVoiceNote != true
+                && ($0.text == text || (alt != nil && $0.text == alt)) }) {
             var item = items.remove(at: idx)
             // Señal de frecuencia (C7): refresca createdAt, conserva/inicializa firstSeenAt e incrementa copyCount.
             item.firstSeenAt = item.firstSeenAt ?? item.createdAt
@@ -200,9 +210,12 @@ final class ClipboardManager: ObservableObject, ClipboardStoring {
 
     // MARK: - Notas de voz (audio guardado + transcripción en 3 pasos)
 
-    static let voiceTranscribing = "🎙 Transcribiendo…"
-    static let voiceFailed = "🎙 Nota de voz (sin transcripción · reproduce el audio)"
-    static let voiceFailedNoAudio = "🎙 Nota de voz (no se pudo transcribir)"
+    static var voiceTranscribing: String { L10n.t("voice.item.transcribing") }
+    /// Matches the transcribing sentinel in ANY language — previews are persisted, so a language
+    /// switch must not break these comparisons (protección de poda, reconciliación, guard de reintento).
+    static var voiceTranscribingValues: Set<String> { L10n.allValues("voice.item.transcribing") }
+    static var voiceFailed: String { L10n.t("voice.item.failedGeneric") }
+    static var voiceFailedNoAudio: String { L10n.t("voice.item.failed") }
 
     private static func voicePreview(_ clean: String) -> String {
         "🎙 " + String(clean.prefix(160))
@@ -274,7 +287,7 @@ final class ClipboardManager: ObservableObject, ClipboardStoring {
 
     /// No se recorta: ni los fijados ni una nota de voz aún transcribiéndose (se perdería su audio/texto).
     private func isProtectedFromTrim(_ it: ClipboardItem) -> Bool {
-        it.pinned || (it.isVoiceNote == true && it.preview == Self.voiceTranscribing)
+        it.pinned || (it.isVoiceNote == true && Self.voiceTranscribingValues.contains(it.preview))
     }
 
     private func trimAndSave() {

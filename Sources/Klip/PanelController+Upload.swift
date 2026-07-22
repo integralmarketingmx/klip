@@ -19,7 +19,7 @@ extension PanelController {
             showUploadToast(pageLink)
         } catch {
             let msg = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-            showAlert("No se pudo subir la imagen", msg)
+            showAlert(L10n.t("upload.err.title"), msg)
         }
     }
 
@@ -27,7 +27,7 @@ extension PanelController {
     private func showUploadToast(_ link: URL) {
         uploadToastWindow?.orderOut(nil)
 
-        let text = "✓ Link copiado al portapapeles\n\(link.absoluteString)"
+        let text = String(format: L10n.t("upload.linkCopied"), link.absoluteString)
         let label = NSTextField(wrappingLabelWithString: text)
         label.font = .systemFont(ofSize: 12)
         label.textColor = .labelColor

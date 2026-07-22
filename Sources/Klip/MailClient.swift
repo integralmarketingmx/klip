@@ -12,12 +12,12 @@ enum MailError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidEndpoint:  return "El servidor de email no es una dirección válida."
-        case .missingToken:     return "Falta el token de API de Klip (configúralo en Preferencias)."
-        case .noRecipients:     return "Agrega al menos un destinatario."
-        case .transport(let e): return "Error de red al enviar: \(e.localizedDescription)"
-        case .http(let s, let b): return "El servidor respondió con error (HTTP \(s)). \(b)"
-        case .invalidResponse:  return "La respuesta del servidor no es válida."
+        case .invalidEndpoint:  return L10n.t("mail.err.endpoint")
+        case .missingToken:     return L10n.t("mail.err.token")
+        case .noRecipients:     return L10n.t("mail.err.noRecipients")
+        case .transport(let e): return String(format: L10n.t("mail.err.transport"), e.localizedDescription)
+        case .http(let s, let b): return String(format: L10n.t("mail.err.http"), String(s), b)
+        case .invalidResponse:  return L10n.t("mail.err.invalidResponse")
         }
     }
 }

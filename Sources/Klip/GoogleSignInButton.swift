@@ -46,6 +46,7 @@ struct GoogleSignInButton: View {
     var connecting: Bool = false
     var action: () -> Void
     @Environment(\.colorScheme) private var scheme
+    @ObservedObject private var settings = Settings.shared
 
     private var bg: Color { scheme == .dark ? Color(red: 0.0745, green: 0.0745, blue: 0.0784) : .white }
     private var border: Color { scheme == .dark ? Color(red: 0.557, green: 0.569, blue: 0.561) : Color(red: 0.455, green: 0.467, blue: 0.459) }
@@ -59,7 +60,7 @@ struct GoogleSignInButton: View {
                 } else {
                     GoogleGLogo(size: 18)
                 }
-                Text("Iniciar sesión con Google")
+                Text(L10n.t("google.signIn"))
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(fg)
             }

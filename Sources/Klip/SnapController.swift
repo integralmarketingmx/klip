@@ -134,12 +134,10 @@ final class SnapController {
             return
         }
         let alert = NSAlert()
-        alert.messageText = "Klip necesita permiso de Grabación de pantalla"
-        alert.informativeText = "Para capturar una región de la pantalla, concede acceso a Klip en "
-            + "Ajustes del Sistema › Privacidad y seguridad › Grabación de pantalla. "
-            + "Tras concederlo, vuelve a pulsar el atajo de captura."
-        alert.addButton(withTitle: "Abrir Ajustes")
-        alert.addButton(withTitle: "Cancelar")
+        alert.messageText = L10n.t("snap.perm.title")
+        alert.informativeText = L10n.t("snap.perm.info")
+        alert.addButton(withTitle: L10n.t("snap.perm.open"))
+        alert.addButton(withTitle: L10n.t("common.cancel"))
         if alert.runModal() == .alertFirstButtonReturn {
             if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
                 NSWorkspace.shared.open(url)

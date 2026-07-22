@@ -191,7 +191,7 @@ struct HistoryView: View {
                             .foregroundStyle(settings.alwaysOnTop ? Color.accentColor : .primary)
                     }
                     .buttonStyle(.borderless)
-                    .help(settings.alwaysOnTop ? "Desfijar (se cierra al hacer clic fuera)" : "Fijar arriba (no se cierra al capturar)")
+                    .help(settings.alwaysOnTop ? L10n.t("row.unpinTop") : L10n.t("row.pinTop"))
                     Button { onVoiceRecord() } label: {
                         Image(systemName: recorder.state == .recording ? "mic.fill" : "mic")
                             .foregroundStyle(recorder.state == .recording ? .red : .primary)
@@ -303,6 +303,9 @@ struct HistoryView: View {
     private var list: some View {
         ScrollViewReader { proxy in
             ScrollView {
+                // .id(uiLanguage): recrea las filas al cambiar idioma (sus strings L10n se
+                // re-resuelven) sin suscribir cada ItemRow a TODOS los cambios de Settings —
+                // eso re-renderizaba todo el historial por cada tecla en Preferencias.
                 LazyVStack(spacing: 3) {
                     ForEach(paged) { item in
                         ItemRow(item: item,
@@ -326,6 +329,7 @@ struct HistoryView: View {
                     if remaining > 0 { loadMoreButton }
                 }
                 .padding(8)
+                .id(settings.uiLanguage)
             }
             .onChange(of: selection.selectedID) { _, newID in
                 guard let newID else { return }
@@ -458,7 +462,7 @@ struct ItemRow: View {
               Storage.shared.audioExists(fileName: af) else { return nil }
         return af
     }
-    private var isTranscribing: Bool { item.preview == ClipboardManager.voiceTranscribing }
+    private var isTranscribing: Bool { ClipboardManager.voiceTranscribingValues.contains(item.preview) }
 
     /// Color si el texto del elemento es un hex (#RGB / #RRGGBB / #RRGGBBAA) → muestra una muestra.
     private var swatchColor: NSColor? {
@@ -631,7 +635,7 @@ struct ItemRow: View {
                 if uploading {
                     ProgressView().controlSize(.small).frame(width: 18)
                 } else {
-                    iconButton("link", "Subir y copiar link") {
+                    iconButton("link", L10n.t("row.uploadLink")) {
                         uploading = true
                         Task {
                             await onUploadLink(item)
@@ -639,7 +643,7 @@ struct ItemRow: View {
                         }
                     }
                 }
-                iconButton("envelope", "Enviar por email") { onComposeEmail(item) }
+                iconButton("envelope", L10n.t("row.email")) { onComposeEmail(item) }
                 iconButton("text.viewfinder", L10n.t("row.ocr")) { onOCR() }
             } else if isCredential {
                 iconButton("doc.on.doc", L10n.t("row.copy")) { onPick(item) }

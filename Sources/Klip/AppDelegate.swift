@@ -52,10 +52,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setupHotKeys()
         verifyCmd4IfPending()
         maybeEnableLoginOnce()
-        Settings.shared.$uiLanguage.dropFirst().sink { [weak self] _ in self?.buildMenu() }.store(in: &cancellables)
+        // receive(on:) difiere al siguiente ciclo del runloop: @Published emite en willSet y aquí ya debe leerse el idioma NUEVO
+        Settings.shared.$uiLanguage.dropFirst().receive(on: DispatchQueue.main).sink { [weak self] _ in
+            self?.buildMenu()
+            self?.installMainMenu()   // re-localiza el ítem "Salir" del menú principal
+            self?.prefsController?.window?.title = L10n.t("win.prefs")   // re-localiza el título de Preferencias (creado una sola vez)
+        }.store(in: &cancellables)
         // Aviso NO-modal cuando el guardado del historial falla repetidamente (Consejo C6).
         NotificationCenter.default.addObserver(self, selector: #selector(handlePersistenceFailure(_:)),
                                                name: Storage.persistenceFailureNotification, object: nil)
+        if !Settings.shared.hasSeenWelcome {
+            DispatchQueue.main.async { [weak self] in self?.panelController.showWelcome() }
+        }
     }
 
     /// Muestra una advertencia no-bloqueante (ventana flotante) cuando Klip no logra guardar el
@@ -67,10 +75,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let info = (note.userInfo?["message"] as? String) ?? ""
         let a = NSAlert()
         a.alertStyle = .warning
-        a.messageText = "Klip no pudo guardar el historial"
-        a.informativeText = "Hubo fallos repetidos al escribir en disco. Revisa el espacio libre o los permisos."
+        a.messageText = L10n.t("alert.saveFail.title")
+        a.informativeText = L10n.t("alert.saveFail.info")
             + (info.isEmpty ? "" : "\n\n(\(info))")
-        let ok = a.addButton(withTitle: "OK")
+        let ok = a.addButton(withTitle: L10n.t("common.ok"))
         ok.target = self
         ok.action = #selector(dismissPersistenceWarning)
         NSApp.activate(ignoringOtherApps: true)
@@ -105,10 +113,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let editMenuItem = NSMenuItem()
         mainMenu.addItem(editMenuItem)
         let editMenu = NSMenu(title: "Edit")
-        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenu.addItem(withTitle: L10n.t("menu.edit.cut"), action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: L10n.t("menu.edit.copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: L10n.t("menu.edit.paste"), action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: L10n.t("menu.edit.selectAll"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editMenuItem.submenu = editMenu
 
         NSApp.mainMenu = mainMenu
@@ -128,6 +136,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
         let recents = NSMenuItem(title: L10n.t("menu.recents"), action: nil, keyEquivalent: "")
         recentsMenu.delegate = self
+        // recentsMenu se REUTILIZA entre rebuilds (cambio de idioma/hotkey): hay que desanclarla del
+        // item viejo antes de re-asignarla, o AppKit lanza "already a submenu of some menu" (crash).
+        if let oldParent = recentsMenu.supermenu,
+           let oldItem = oldParent.items.first(where: { $0.submenu === recentsMenu }) {
+            oldItem.submenu = nil
+        }
         recents.submenu = recentsMenu
         menu.addItem(recents)
         menu.addItem(.separator())
@@ -146,11 +160,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let clearItem = NSMenuItem(title: L10n.t("menu.clear"), action: nil, keyEquivalent: "")
         let clearMenu = NSMenu()
         let ranges: [(String, Int)] = [
-            ("Última hora", 3600),
-            ("Último día", 86_400),
-            ("Última semana", 604_800),
-            ("Último mes", 2_592_000),
-            ("Todo", 0)
+            (L10n.t("clear.range.hour"), 3600),
+            (L10n.t("clear.range.day"), 86_400),
+            (L10n.t("clear.range.week"), 604_800),
+            (L10n.t("clear.range.month"), 2_592_000),
+            (L10n.t("filter.all"), 0)
         ]
         for (title, secs) in ranges {
             if secs == 0 { clearMenu.addItem(.separator()) }
@@ -193,9 +207,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             let alert = NSAlert()
             alert.alertStyle = .informational
-            alert.messageText = "⌘⇧4 listo ✓"
-            alert.informativeText = "Ahora ⌘⇧4 abre la captura de Klip en vez de la de macOS."
-            alert.addButton(withTitle: "OK")
+            alert.messageText = L10n.t("alert.cmd4Ready.title")
+            alert.informativeText = L10n.t("alert.cmd4Ready.info")
+            alert.addButton(withTitle: L10n.t("common.ok"))
             NSApp.activate(ignoringOtherApps: true)
             alert.runModal()
         }
@@ -344,8 +358,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func enableAutoPaste() {
         if Paster.ensureAccessibilityPermission(prompt: true) {
             let a = NSAlert()
-            a.messageText = "Pegado automático activado"
-            a.informativeText = "Klip ya puede pegar automáticamente al elegir un elemento del historial."
+            a.messageText = L10n.t("alert.autopaste.title")
+            a.informativeText = L10n.t("alert.autopaste.info")
             a.runModal()
         }
     }
@@ -370,18 +384,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let count = secs == 0 ? manager.items.count : manager.countSince(Date(timeIntervalSinceNow: -Double(secs)))
         guard count > 0 else {
             let none = NSAlert()
-            none.messageText = "Nada que borrar"
-            none.informativeText = "No hay elementos en ese rango (los fijados no se borran)."
-            none.addButton(withTitle: "OK")
+            none.messageText = L10n.t("alert.nothingClear.title")
+            none.informativeText = L10n.t("alert.nothingClear.info")
+            none.addButton(withTitle: L10n.t("common.ok"))
             NSApp.activate(ignoringOtherApps: true)
             none.runModal()
             return
         }
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = secs == 0 ? "¿Borrar todo el historial?" : "¿Borrar el historial de \(label)?"
-        alert.informativeText = "Se eliminarán \(count) elemento\(count == 1 ? "" : "s"). Los fijados se conservan. No se puede deshacer."
-        let del = alert.addButton(withTitle: "Borrar")
+        alert.messageText = secs == 0 ? L10n.t("clear.title") : String(format: L10n.t("clear.rangeTitle"), label)
+        alert.informativeText = String(format: L10n.t("clear.rangeInfo"), count)
+        let del = alert.addButton(withTitle: L10n.t("common.delete"))
         del.hasDestructiveAction = true
         let cancel = alert.addButton(withTitle: L10n.t("common.cancel"))
         cancel.keyEquivalent = "\u{1b}"

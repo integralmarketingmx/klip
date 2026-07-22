@@ -19,13 +19,13 @@ enum SnapTool: String, CaseIterable {
 
     var tooltip: String {
         switch self {
-        case .pencil:    return "Lápiz"
-        case .line:      return "Línea"
-        case .arrow:     return "Flecha"
-        case .rectangle: return "Rectángulo"
-        case .ellipse:   return "Elipse"
-        case .marker:    return "Marcador"
-        case .text:      return "Texto"
+        case .pencil:    return L10n.t("tool.pencil")
+        case .line:      return L10n.t("tool.line")
+        case .arrow:     return L10n.t("tool.arrow")
+        case .rectangle: return L10n.t("tool.rectangle")
+        case .ellipse:   return L10n.t("tool.ellipse")
+        case .marker:    return L10n.t("tool.marker")
+        case .text:      return L10n.t("tool.text")
         }
     }
 }

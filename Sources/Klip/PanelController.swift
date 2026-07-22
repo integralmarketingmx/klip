@@ -41,6 +41,7 @@ final class PanelController: NSObject, NSWindowDelegate {
     private let cornerRadius: CGFloat = 12
     var recordingPanel: NSPanel?              // internal: usado por PanelController+Voice.swift
     var guideWindow: NSWindow?                // internal: usado por PanelController+Actions.swift
+    var welcomeWindow: NSWindow?              // internal: usado por PanelController+Actions.swift
     var uploadWindow: NSWindow?               // internal: usado por PanelController+Actions.swift
     var annotationWindow: NSWindow?           // internal: usado por PanelController+Capture.swift
     var annotationCloser: NSObject?           // retiene el delegate de cierre del anotador (delegate es weak)

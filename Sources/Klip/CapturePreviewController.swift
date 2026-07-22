@@ -93,7 +93,7 @@ final class CapturePreviewController: NSObject {
 
     /// Pastilla translúcida "✓ Copiado · ⌘V" para la esquina de la miniatura.
     private func makeCopiedBadge() -> NSView {
-        let text = "✓ Copiado · ⌘V"
+        let text = L10n.t("capture.copied")
         let font = NSFont.systemFont(ofSize: 10.5, weight: .semibold)
         let size = (text as NSString).size(withAttributes: [.font: font])
         let padX: CGFloat = 8, padY: CGFloat = 4

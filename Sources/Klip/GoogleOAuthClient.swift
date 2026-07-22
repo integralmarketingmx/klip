@@ -24,12 +24,12 @@ enum GoogleOAuthError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .missingClient: return "Configura el Client ID y Client Secret de Google en Preferencias."
-        case .notConnected:  return "No hay una cuenta de Google conectada. Pulsa \"Conectar con Google\"."
-        case .server(let m): return "No se pudo iniciar el servidor local de OAuth: \(m)"
-        case .denied(let m): return "Google rechazó o canceló el acceso: \(m)"
-        case .token(let m):  return "Error obteniendo el token de Google: \(m)"
-        case .transport(let e): return "Error de red con Google: \(e.localizedDescription)"
+        case .missingClient: return L10n.t("oauth.err.missingClient")
+        case .notConnected:  return L10n.t("oauth.err.notConnected")
+        case .server(let m): return String(format: L10n.t("oauth.err.server"), m)
+        case .denied(let m): return String(format: L10n.t("oauth.err.denied"), m)
+        case .token(let m):  return String(format: L10n.t("oauth.err.token"), m)
+        case .transport(let e): return String(format: L10n.t("oauth.err.transport"), e.localizedDescription)
         }
     }
 }
@@ -67,7 +67,7 @@ final class GoogleOAuthClient {
         let redirectURI = "http://127.0.0.1:\(listener.port)/"
 
         guard var comps = URLComponents(string: authBase) else {
-            throw GoogleOAuthError.denied("URL de autorización inválida")
+            throw GoogleOAuthError.denied(L10n.t("oauth.err.badURL"))
         }
         comps.queryItems = [
             .init(name: "client_id", value: clientId),
@@ -264,7 +264,12 @@ private final class LoopbackServer {
 
     /// Espera (en background) a que llegue el redirect y devuelve sus query params.
     func waitForCallback() async throws -> [String: String] {
-        try await withCheckedThrowingContinuation { cont in
+        // Se lee L10n aquí (en main, ya que connect() es @MainActor) y no dentro del bloque en background:
+        // patrón igual al resto del codebase — L10n solo se lee en main (Settings.shared.uiLanguage se escribe en main).
+        let htmlLang = L10n.lang
+        let htmlTitle = L10n.t("oauth.html.title")
+        let htmlBody = L10n.t("oauth.html.body")
+        return try await withCheckedThrowingContinuation { cont in
             DispatchQueue.global().async { [fd] in
                 defer { close(fd) }
                 let client = accept(fd, nil, nil)
@@ -291,10 +296,10 @@ private final class LoopbackServer {
 
                 // Responder una página simple.
                 let html = """
-                <!doctype html><html lang="es"><head><meta charset="utf-8">
+                <!doctype html><html lang="\(htmlLang)"><head><meta charset="utf-8">
                 <title>Klip</title></head><body style="font-family:-apple-system,sans-serif;text-align:center;padding:48px">
-                <h2>✅ Cuenta de Google conectada</h2>
-                <p>Ya puedes volver a Klip y cerrar esta pestaña.</p></body></html>
+                <h2>\(htmlTitle)</h2>
+                <p>\(htmlBody)</p></body></html>
                 """
                 let resp = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: \(html.utf8.count)\r\nConnection: close\r\n\r\n" + html
                 _ = resp.withCString { write(client, $0, strlen($0)) }

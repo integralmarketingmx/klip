@@ -22,7 +22,7 @@ final class APIKeyModel: ObservableObject {
     func save(_ raw: String) -> Bool {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            errorMessage = "No se detectó ninguna clave. Pega el texto y vuelve a intentarlo."
+            errorMessage = L10n.t("key.err.empty")
             savedOK = false
             return false
         }
@@ -31,12 +31,12 @@ final class APIKeyModel: ObservableObject {
             if ok {
                 errorMessage = nil; savedOK = true
             } else {
-                errorMessage = "La clave no se pudo confirmar tras guardarla."; savedOK = false
+                errorMessage = L10n.t("key.err.unconfirmed"); savedOK = false
             }
             refresh()
             return ok
         } catch {
-            errorMessage = "No se pudo guardar: \(error.localizedDescription)"
+            errorMessage = String(format: L10n.t("key.err.save"), error.localizedDescription)
             savedOK = false
             refresh()
             return false
@@ -80,13 +80,7 @@ struct PreferencesView: View {
     private let models = ["gpt-4o-mini-transcribe", "whisper-1"]
 
     /// Prompt listo para pegar en cualquier IA y verificar los precios vigentes (cambian seguido).
-    private let costCheckPrompt = """
-    Compara el costo ACTUAL (hoy) de transcribir audio con estos modelos: \
-    Google Gemini (gemini-flash-latest, con thinkingBudget 0), \
-    OpenAI gpt-4o-mini-transcribe y OpenAI whisper-1. \
-    Dame el precio por minuto de cada uno y cuál es el más barato. \
-    Cita las páginas oficiales de precios de OpenAI y Google.
-    """
+    private var costCheckPrompt: String { L10n.t("prefs.cost.prompt") }
     // Modelos de Gemini. Los alias "-latest" evitan 404 por deprecación; se incluyen también
     // versiones fijadas para quien quiera estabilidad de comportamiento.
     private let geminiModels = ["gemini-flash-latest", "gemini-flash-lite-latest",
@@ -125,15 +119,15 @@ struct PreferencesView: View {
     private var emailMethodFields: some View {
         // Campos comunes a todos los métodos que pasan por el backend (no system mail).
         if settings.mailMethod != .systemMail {
-            TextField("Remitente · tu@empresa.com", text: $settings.mailFrom)
+            TextField(L10n.t("prefs.email.from.ph"), text: $settings.mailFrom)
                 .textFieldStyle(.roundedBorder)
         }
 
         switch settings.mailMethod {
         case .oauth:
-            TextField("Servidor (https://klip…)", text: $settings.uploadEndpoint)
+            TextField(L10n.t("prefs.email.server.ph"), text: $settings.uploadEndpoint)
                 .textFieldStyle(.roundedBorder)
-            SecureField("Token de API (KLIP_API_TOKEN)", text: $settings.mailApiToken)
+            SecureField(L10n.t("prefs.email.token.ph"), text: $settings.mailApiToken)
                 .textFieldStyle(.roundedBorder)
             TextField("Google Client ID", text: $settings.googleClientId)
                 .textFieldStyle(.roundedBorder)
@@ -143,10 +137,11 @@ struct PreferencesView: View {
                 if googleConnected {
                     Image(systemName: "checkmark.seal.fill").foregroundStyle(.green)
                     Text(settings.googleAccountEmail.isEmpty
-                         ? "Conectado" : "Conectado como \(settings.googleAccountEmail)")
+                         ? L10n.t("prefs.google.connected")
+                         : String(format: L10n.t("prefs.google.connectedAs"), settings.googleAccountEmail))
                         .font(.caption)
                     Spacer()
-                    Button("Desconectar") {
+                    Button(L10n.t("prefs.google.disconnect")) {
                         GoogleOAuthClient.shared.disconnect()
                         googleConnected = false
                     }
@@ -162,42 +157,42 @@ struct PreferencesView: View {
                 }
             }
             if let googleError { Text(googleError).font(.caption).foregroundStyle(.red) }
-            Text("Inicia sesión con tu propia cuenta de Google (scope gmail.send). El correo sale como tú. El token de API protege el endpoint /send.")
+            Text(L10n.t("prefs.google.help"))
                 .font(.caption).foregroundStyle(.secondary)
 
         case .smtp:
-            TextField("Servidor (https://klip…)", text: $settings.uploadEndpoint)
+            TextField(L10n.t("prefs.email.server.ph"), text: $settings.uploadEndpoint)
                 .textFieldStyle(.roundedBorder)
-            SecureField("Token de API (KLIP_API_TOKEN)", text: $settings.mailApiToken)
+            SecureField(L10n.t("prefs.email.token.ph"), text: $settings.mailApiToken)
                 .textFieldStyle(.roundedBorder)
-            TextField("SMTP host · smtp.tuempresa.com", text: $settings.smtpHost)
+            TextField(L10n.t("prefs.smtp.host.ph"), text: $settings.smtpHost)
                 .textFieldStyle(.roundedBorder)
-            TextField("Puerto", value: $settings.smtpPort, format: .number)
+            TextField(L10n.t("prefs.smtp.port.ph"), value: $settings.smtpPort, format: .number)
                 .textFieldStyle(.roundedBorder)
-            TextField("Usuario SMTP", text: $settings.smtpUser)
+            TextField(L10n.t("prefs.smtp.user.ph"), text: $settings.smtpUser)
                 .textFieldStyle(.roundedBorder)
             HStack {
                 Group {
                     if showSMTPPass {
-                        TextField("Contraseña SMTP", text: $draftSMTPPass)
+                        TextField(L10n.t("prefs.smtp.pass.ph"), text: $draftSMTPPass)
                     } else {
-                        SecureField(smtpPass.isConfigured ? "•••••• (guardada)" : "Contraseña SMTP",
+                        SecureField(smtpPass.isConfigured ? L10n.t("prefs.smtp.pass.saved") : L10n.t("prefs.smtp.pass.ph"),
                                     text: $draftSMTPPass)
                     }
                 }
                 .textFieldStyle(.roundedBorder)
-                Button(showSMTPPass ? "Ocultar" : "Ver") { showSMTPPass.toggle() }
-                Button("Guardar") { smtpPass.save(draftSMTPPass); draftSMTPPass = "" }
+                Button(showSMTPPass ? L10n.t("common.hide") : L10n.t("common.show")) { showSMTPPass.toggle() }
+                Button(L10n.t("common.save")) { smtpPass.save(draftSMTPPass); draftSMTPPass = "" }
                     .disabled(draftSMTPPass.isEmpty)
             }
-            TextField("Remitente SMTP (opcional, default = remitente)", text: $settings.smtpFrom)
+            TextField(L10n.t("prefs.smtp.from.ph"), text: $settings.smtpFrom)
                 .textFieldStyle(.roundedBorder)
             if let e = smtpPass.errorMessage { Text(e).font(.caption).foregroundStyle(.red) }
-            Text("La contraseña SMTP se guarda CIFRADA en este Mac y viaja por HTTPS al backend, que la usa para el envío y NO la persiste. El correo sale por tu servidor SMTP (STARTTLS).")
+            Text(L10n.t("prefs.smtp.help"))
                 .font(.caption).foregroundStyle(.secondary)
 
         case .systemMail:
-            Text("Al enviar, Klip abre el compositor de correo nativo (Mail.app o tu cliente por defecto) con la imagen adjunta. No requiere servidor ni token; funciona con cualquier cuenta.")
+            Text(L10n.t("prefs.systemMail.help"))
                 .font(.caption).foregroundStyle(.secondary)
         }
     }
@@ -261,10 +256,12 @@ struct PreferencesView: View {
                 Stepper(String(format: L10n.t("prefs.maxItems"), settings.maxItems),
                         value: $settings.maxItems, in: 20...1000, step: 10)
                     .onChange(of: settings.maxItems) { _, _ in onMaxItemsChange() }
+                Toggle(L10n.t("prefs.cleanCapture"), isOn: $settings.cleanCapture)
+                Text(L10n.t("prefs.cleanCapture.help")).font(.caption).foregroundStyle(.secondary)
             }
 
-            Section("Email (enviar capturas)") {
-                Picker("Método de envío", selection: $settings.mailMethod) {
+            Section(L10n.t("prefs.email.section")) {
+                Picker(L10n.t("prefs.email.method"), selection: $settings.mailMethod) {
                     ForEach(MailMethod.allCases) { m in
                         Text(m.displayName).tag(m)
                     }
@@ -281,10 +278,10 @@ struct PreferencesView: View {
                     HotKeyField(combo: $settings.captureCombo, onChange: onCaptureHotKeyChange) }
                 Text(L10n.t("prefs.sc.hint"))
                     .font(.caption).foregroundStyle(.secondary)
-                Toggle("Reemplazar ⌘⇧4 de macOS", isOn: Binding(
+                Toggle(L10n.t("prefs.override.toggle"), isOn: Binding(
                     get: { settings.overrideSystemCapture },
                     set: { setOverrideCmd4($0) }))
-                Text("Desactiva la captura del sistema (⌘⇧4) y se la asigna a Klip. Al apagarlo, la restaura y Klip vuelve a ⌘⇧2.")
+                Text(L10n.t("prefs.override.help"))
                     .font(.caption).foregroundStyle(.secondary)
             }
 
@@ -308,19 +305,19 @@ struct PreferencesView: View {
                     ForEach(dictationLanguages, id: \.code) { Text($0.name).tag($0.code) }
                 }
                 Toggle(settings.aiProvider == "gemini"
-                       ? "Usar OpenAI si Gemini falla"
-                       : "Usar Gemini si OpenAI falla", isOn: $settings.transcriptionFallback)
+                       ? L10n.t("prefs.fallback.openai")
+                       : L10n.t("prefs.fallback.gemini"), isOn: $settings.transcriptionFallback)
                 Text(settings.aiProvider == "gemini"
                      ? L10n.t("prefs.voice.useGemini")
                      : L10n.t("prefs.voice.useOpenAI"))
                     .font(.caption).foregroundStyle(.secondary)
             }
 
-            Section("Costo aproximado por transcripción") {
+            Section(L10n.t("prefs.cost.section")) {
                 costRow(rank: 1, name: "Gemini", model: "gemini-flash-latest", perMin: "~$0.0020/min", cheapest: true)
                 costRow(rank: 2, name: "OpenAI mini", model: "gpt-4o-mini-transcribe", perMin: "~$0.003/min", cheapest: false)
-                costRow(rank: 3, name: "OpenAI Whisper", model: "whisper-1 (modelo viejo)", perMin: "~$0.006/min", cheapest: false)
-                Text("Medido en jun 2026 con ~1 min de audio. Gemini va sin “thinking” (más barato). **Los precios de las APIs cambian** — verifica los vigentes:")
+                costRow(rank: 3, name: "OpenAI Whisper", model: L10n.t("prefs.cost.model.whisper"), perMin: "~$0.006/min", cheapest: false)
+                Text(L10n.t("prefs.cost.help"))
                     .font(.caption).foregroundStyle(.secondary)
                 HStack(spacing: 10) {
                     Button {
@@ -334,12 +331,12 @@ struct PreferencesView: View {
                             costPromptCopied = false
                         }
                     } label: {
-                        Label(costPromptCopied ? "Prompt copiado ✓" : "Copiar prompt para verificar precios",
+                        Label(costPromptCopied ? L10n.t("prefs.cost.promptCopied") : L10n.t("prefs.cost.copyPrompt"),
                               systemImage: costPromptCopied ? "checkmark" : "doc.on.doc")
                     }
-                    Link(label: "link", text: "Precios OpenAI", url: URL(string: "https://openai.com/api/pricing")!)
+                    Link(label: "link", text: L10n.t("prefs.cost.linkOpenAI"), url: URL(string: "https://openai.com/api/pricing")!)
                         .font(.caption)
-                    Link(label: "link", text: "Precios Gemini", url: URL(string: "https://ai.google.dev/gemini-api/docs/pricing")!)
+                    Link(label: "link", text: L10n.t("prefs.cost.linkGemini"), url: URL(string: "https://ai.google.dev/gemini-api/docs/pricing")!)
                         .font(.caption)
                 }
             }
@@ -453,13 +450,13 @@ struct PreferencesView: View {
         HStack(spacing: 6) {
             if model.isConfigured {
                 Image(systemName: "checkmark.seal.fill").foregroundStyle(.green)
-                Text("Clave configurada")
+                Text(L10n.t("prefs.key.configured"))
                 if let l4 = model.last4 {
                     Text("••••\(l4)").font(.system(.caption, design: .monospaced)).foregroundStyle(.secondary)
                 }
             } else {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                Text("Sin clave configurada").foregroundStyle(.secondary)
+                Text(L10n.t("prefs.key.none")).foregroundStyle(.secondary)
             }
         }
     }
@@ -479,7 +476,7 @@ struct PreferencesView: View {
             Spacer()
             Text(perMin).font(.system(.body, design: .monospaced))
             if cheapest {
-                Text("más barato")
+                Text(L10n.t("prefs.cost.cheapest"))
                     .font(.caption2).bold().foregroundStyle(.green)
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(Capsule().fill(Color.green.opacity(0.16)))
@@ -507,11 +504,11 @@ struct PreferencesView: View {
     private func promptReloginForCmd4() {
         let alert = NSAlert()
         alert.alertStyle = .informational
-        alert.messageText = "Falta un paso para usar ⌘⇧4"
-        alert.informativeText = "Para que ⌘⇧4 abra Klip en vez de la captura de macOS, necesitas cerrar sesión y volver a entrar una vez. macOS suelta el atajo solo al reiniciar tu sesión (no apaga la Mac). Klip lo verificará al volver."
-        alert.addButton(withTitle: "Cerrar sesión ahora")     // .alertFirstButtonReturn
-        alert.addButton(withTitle: "Lo haré después")          // .alertSecondButtonReturn
-        let cancel = alert.addButton(withTitle: "Cancelar (usar ⌘⇧2)")  // .alertThirdButtonReturn
+        alert.messageText = L10n.t("prefs.relogin.title")
+        alert.informativeText = L10n.t("prefs.relogin.info")
+        alert.addButton(withTitle: L10n.t("prefs.relogin.logout"))     // .alertFirstButtonReturn
+        alert.addButton(withTitle: L10n.t("prefs.relogin.later"))          // .alertSecondButtonReturn
+        let cancel = alert.addButton(withTitle: L10n.t("prefs.relogin.cancel"))  // .alertThirdButtonReturn
         cancel.keyEquivalent = "\u{1b}"
         NSApp.activate(ignoringOtherApps: true)
         switch alert.runModal() {

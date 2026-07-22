@@ -19,11 +19,11 @@ extension PanelController {
                 // El slug es el nombre del archivo sin extensión del último componente de la URL.
                 slug = (link.lastPathComponent as NSString).deletingPathExtension
             }
-            let subject = "Captura de Klip" + (item.name.map { " · \($0)" } ?? "")
-            var bodyLines = ["Te comparto una captura desde Klip."]
+            let subject = L10n.t("email.defaultSubject") + (item.name.map { " · \($0)" } ?? "")
+            var bodyLines = [L10n.t("email.defaultBody")]
             if let ocr = item.text?.trimmingCharacters(in: .whitespacesAndNewlines), !ocr.isEmpty {
                 bodyLines.append("")
-                bodyLines.append("Texto detectado (OCR):")
+                bodyLines.append(L10n.t("email.ocrLabel"))
                 bodyLines.append(ocr)
             }
             presentEmailComposer(slug: slug, attachment: png,
@@ -41,8 +41,8 @@ extension PanelController {
                 slug = (link.lastPathComponent as NSString).deletingPathExtension
             }
             presentEmailComposer(slug: slug, attachment: png,
-                                 subject: "Captura de Klip",
-                                 body: "Te comparto una captura desde Klip.")
+                                 subject: L10n.t("email.defaultSubject"),
+                                 body: L10n.t("email.defaultBody"))
         }
     }
 
@@ -61,7 +61,7 @@ extension PanelController {
         )
         let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 560),
                          styleMask: [.titled, .closable], backing: .buffered, defer: false)
-        w.title = "Enviar por email"
+        w.title = L10n.t("email.win.title")
         w.isReleasedWhenClosed = false
         w.contentView = NSHostingView(rootView: view)
         w.center()

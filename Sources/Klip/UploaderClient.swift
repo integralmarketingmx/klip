@@ -11,11 +11,11 @@ enum UploadError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidEndpoint:  return "El servidor de subida no es una dirección válida."
-        case .encodingFailed:   return "No se pudo preparar la imagen (PNG)."
-        case .transport(let e): return "Error de red al subir: \(e.localizedDescription)"
-        case .http(let status): return "El servidor respondió con error (HTTP \(status))."
-        case .invalidResponse:  return "La respuesta del servidor no es válida."
+        case .invalidEndpoint:  return L10n.t("up.err.endpoint")
+        case .encodingFailed:   return L10n.t("up.err.encoding")
+        case .transport(let e): return String(format: L10n.t("up.err.transport"), e.localizedDescription)
+        case .http(let status): return String(format: L10n.t("up.err.http"), String(status))
+        case .invalidResponse:  return L10n.t("up.err.invalidResponse")
         }
     }
 }

@@ -72,7 +72,7 @@ extension PanelController {
             )
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 300),
                              styleMask: [.titled, .closable], backing: .buffered, defer: false)
-            w.title = "Subir audio"
+            w.title = L10n.t("win.upload")
             w.isReleasedWhenClosed = false
             w.contentView = NSHostingView(rootView: view)
             w.center()
@@ -116,8 +116,8 @@ extension PanelController {
 
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "No se pudo transcribir la nota de voz"
-        alert.informativeText = "\(error.message)\n\nTu nota está guardada. Pega una clave válida y reintenta."
+        alert.messageText = L10n.t("voice.err.title")
+        alert.informativeText = String(format: L10n.t("voice.err.info"), error.message)
 
         // Campo para la clave nueva.
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
@@ -125,11 +125,11 @@ extension PanelController {
         alert.accessoryView = field
         alert.window.initialFirstResponder = field
 
-        let save = alert.addButton(withTitle: "Guardar y reintentar")  // .alertFirstButtonReturn (default)
+        let save = alert.addButton(withTitle: L10n.t("voice.err.saveRetry"))  // .alertFirstButtonReturn (default)
         save.keyEquivalent = "\r"
         let canUseOther = AIProvider.hasKey(for: other) && audioFileName != nil
-        if canUseOther { alert.addButton(withTitle: "Usar \(otherName) esta vez") } // .alertSecondButtonReturn
-        let close = alert.addButton(withTitle: "OK")                           // tercer (o segundo) botón
+        if canUseOther { alert.addButton(withTitle: String(format: L10n.t("voice.err.useOther"), otherName)) } // .alertSecondButtonReturn
+        let close = alert.addButton(withTitle: L10n.t("common.ok"))                           // tercer (o segundo) botón
         close.keyEquivalent = "\u{1b}"
 
         modalCount += 1

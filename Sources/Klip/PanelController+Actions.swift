@@ -77,9 +77,9 @@ extension PanelController {
     func assignSelectedToCollection(_ items: [ClipboardItem]) {
         guard !items.isEmpty else { return }
         let alert = NSAlert()
-        alert.messageText = "Añadir a colección"
-        alert.informativeText = "Nombre de la colección (déjalo vacío para quitar de su colección)."
-        alert.addButton(withTitle: "Aceptar")
+        alert.messageText = L10n.t("collection.add.title")
+        alert.informativeText = L10n.t("collection.add.info")
+        alert.addButton(withTitle: L10n.t("common.ok"))
         let cancel = alert.addButton(withTitle: L10n.t("common.cancel")); cancel.keyEquivalent = "\u{1b}"
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
         // Precargar solo si TODOS comparten la misma colección; si difieren, dejar vacío (no sobreescribir
@@ -102,7 +102,7 @@ extension PanelController {
         if guideWindow == nil {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 460, height: 560),
                              styleMask: [.titled, .closable], backing: .buffered, defer: false)
-            w.title = "Guía de Klip"
+            w.title = L10n.t("win.guide")
             w.isReleasedWhenClosed = false
             w.contentView = NSHostingView(rootView: GuideView())
             w.center()
@@ -112,11 +112,35 @@ extension PanelController {
         guideWindow?.makeKeyAndOrderFront(nil)
     }
 
+    func showWelcome() {
+        if welcomeWindow == nil {
+            // 440×700 = frame fijo de WelcomeView; un rect menor recorta el botón "Empezar".
+            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 700),
+                             styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            w.title = "Klip"
+            w.isReleasedWhenClosed = false
+            w.contentView = NSHostingView(rootView: WelcomeView(onStart: { [weak self] in
+                Settings.shared.hasSeenWelcome = true
+                self?.welcomeWindow?.close()
+            }))
+            // "Visto" solo cuando el usuario CIERRA la ventana (botón o ✕) — no al mostrarla:
+            // si la app muere antes de que interactúe, el onboarding reaparece al siguiente arranque.
+            NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification,
+                                                   object: w, queue: .main) { _ in
+                Settings.shared.hasSeenWelcome = true
+            }
+            w.center()
+            welcomeWindow = w
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        welcomeWindow?.makeKeyAndOrderFront(nil)
+    }
+
     /// Reintenta transcribir una nota de voz fallida (usa su audio guardado).
     func retryTranscription(_ item: ClipboardItem) {
         guard let af = item.audioFileName, Storage.shared.audioExists(fileName: af) else { return }
         // Evita un segundo reintento (doble-clic) mientras ya está en curso → no duplica la llamada a la API.
-        guard manager.items.first(where: { $0.id == item.id })?.preview != ClipboardManager.voiceTranscribing else { return }
+        guard manager.items.first(where: { $0.id == item.id }).map({ ClipboardManager.voiceTranscribingValues.contains($0.preview) }) != true else { return }
         guard AIProvider.hasKey else { onOpenPreferences?(); return }   // sin clave: ofrecer configurarla
         MainActor.assumeIsolated { recorder.retry(itemID: item.id, audioFileName: af) }
     }

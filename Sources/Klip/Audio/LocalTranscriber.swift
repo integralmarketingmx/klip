@@ -148,7 +148,14 @@ actor LocalTranscriber {
         if let pipe, loadedModel == effective { return pipe }
         let wk: WhisperKit
         do {
-            wk = try await WhisperKit(WhisperKitConfig(model: effective))   // downloads the model on first use
+            // load: true is NOT the default. WhisperKitConfig only loads at init when a modelFolder is
+            // passed, so without this the pipeline comes back UNLOADED: `tokenizer` is nil, which
+            // silently disables the context-word prompt on the first note of every session; `prewarm`
+            // warms nothing; and `pipelineReady` reports true for a pipeline that is not. Worse, the
+            // models then load lazily inside transcribe — and with VAD chunking every concurrent chunk
+            // calls loadModels() at once, which was observed crashing in objc_release with three
+            // threads inside loadModels simultaneously.
+            wk = try await WhisperKit(WhisperKitConfig(model: effective, load: true))   // downloads the model on first use
             loadedModel = effective
         } catch {
             // A bad/unavailable model id (or a failed download for that variant) shouldn't break every

@@ -22,6 +22,7 @@ enum L10n {
     }
 
     private static let es: [String: String] = [
+        "prefs.vocab.toomany": "Demasiadas palabras: por encima de unas 24 el modelo se queda sin espacio y corta el final de la transcripción. Deja solo los nombres y siglas que no acierta.",
         "menu.show": "Mostrar historial",
         "menu.capture": "Capturar región",
         "menu.captureText": "Capturar texto (OCR)",
@@ -389,6 +390,7 @@ enum L10n {
     ]
 
     private static let en: [String: String] = [
+        "prefs.vocab.toomany": "Too many words: past about 24 the model runs out of room and cuts the end of the transcript. Keep only the names and acronyms it gets wrong.",
         "menu.show": "Show history",
         "menu.capture": "Capture region",
         "menu.captureText": "Capture text (OCR)",
@@ -758,6 +760,7 @@ enum L10n {
     // The translations below (fr/de/it/pt/zh/ja) are filled in by the translation workflow; any
     // missing key falls back to English. Keep the keys identical to `en`.
     private static let fr: [String: String] = [
+        "prefs.vocab.toomany": "Trop de mots : au-delà d'environ 24, le modèle manque de place et coupe la fin de la transcription. Ne gardez que les noms et sigles qu'il rate.",
         "menu.show": "Afficher l'historique",
         "menu.capture": "Capturer une zone",
         "menu.prefs": "Préférences…",
@@ -1126,6 +1129,7 @@ enum L10n {
     ]
 
     private static let de: [String: String] = [
+        "prefs.vocab.toomany": "Zu viele Wörter: ab etwa 24 geht dem Modell der Platz aus und es schneidet das Ende der Transkription ab. Behalte nur Namen und Abkürzungen, die es falsch versteht.",
         "menu.show": "Verlauf anzeigen",
         "menu.capture": "Bereich aufnehmen",
         "menu.prefs": "Einstellungen…",
@@ -1494,6 +1498,7 @@ enum L10n {
     ]
 
     private static let it: [String: String] = [
+        "prefs.vocab.toomany": "Troppe parole: oltre le 24 circa il modello esaurisce lo spazio e taglia la fine della trascrizione. Tieni solo i nomi e le sigle che sbaglia.",
         "menu.show": "Mostra cronologia",
         "menu.capture": "Cattura area",
         "menu.prefs": "Preferenze…",
@@ -1862,6 +1867,7 @@ enum L10n {
     ]
 
     private static let pt: [String: String] = [
+        "prefs.vocab.toomany": "Palavras a mais: acima de cerca de 24 o modelo fica sem espaço e corta o fim da transcrição. Mantém só os nomes e siglas que erra.",
         "menu.show": "Mostrar histórico",
         "menu.capture": "Capturar região",
         "menu.prefs": "Preferências…",
@@ -2230,6 +2236,7 @@ enum L10n {
     ]
 
     private static let zh: [String: String] = [
+        "prefs.vocab.toomany": "词条过多：超过约 24 个后，模型空间不足会截断转录结尾。只保留它识别不出的名称和缩写。",
         "menu.show": "显示历史记录",
         "menu.capture": "捕捉区域",
         "menu.prefs": "偏好设置…",
@@ -2598,6 +2605,7 @@ enum L10n {
     ]
 
     private static let ja: [String: String] = [
+        "prefs.vocab.toomany": "単語が多すぎます：24 個ほどを超えると容量が足りず、文字起こしの末尾が切れます。認識を誤る固有名詞と略語だけを残してください。",
         "menu.show": "履歴を表示",
         "menu.capture": "領域をキャプチャ",
         "menu.prefs": "環境設定…",

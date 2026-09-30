@@ -10,7 +10,7 @@ struct UploadView: View {
     var onClose: () -> Void
     var onOpenPreferences: () -> Void
 
-    @State private var hovering = false
+    @StateVar private var hovering = false
 
     private let exts = ["m4a", "mp3", "wav", "mp4", "aac", "aiff", "flac", "ogg", "oga", "opus",
                         "webm", "mpga", "mpeg", "m4b"]

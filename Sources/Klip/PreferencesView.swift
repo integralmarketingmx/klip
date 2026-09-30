@@ -59,23 +59,23 @@ struct PreferencesView: View {
 
     @StateObject private var apiKey = APIKeyModel(.openai)
     @StateObject private var geminiKey = APIKeyModel(.gemini)
-    @State private var draftKey = ""
-    @State private var showKey = false
-    @State private var draftGeminiKey = ""
-    @State private var showGeminiKey = false
-    @State private var launchAtLogin = LoginItem.shared.isEnabledOrPending
-    @State private var loginError: String?
-    @State private var accessibilityGranted = Paster.hasAccessibilityPermission
+    @StateVar private var draftKey = ""
+    @StateVar private var showKey = false
+    @StateVar private var draftGeminiKey = ""
+    @StateVar private var showGeminiKey = false
+    @StateVar private var launchAtLogin = LoginItem.shared.isEnabledOrPending
+    @StateVar private var loginError: String?
+    @StateVar private var accessibilityGranted = Paster.hasAccessibilityPermission
 
-    @State private var costPromptCopied = false
+    @StateVar private var costPromptCopied = false
 
     // MARK: Estado del método de email
     @StateObject private var smtpPass = APIKeyModel(.smtp)
-    @State private var draftSMTPPass = ""
-    @State private var showSMTPPass = false
-    @State private var googleConnecting = false
-    @State private var googleError: String?
-    @State private var googleConnected = GoogleOAuthClient.shared.isConnected
+    @StateVar private var draftSMTPPass = ""
+    @StateVar private var showSMTPPass = false
+    @StateVar private var googleConnecting = false
+    @StateVar private var googleError: String?
+    @StateVar private var googleConnected = GoogleOAuthClient.shared.isConnected
 
     private let models = ["gpt-4o-mini-transcribe", "whisper-1"]
 

@@ -59,7 +59,24 @@ preflight() {
 preflight
 
 echo "→ Building ($CONFIG)…"
-swift build -c "$CONFIG"
+# Stamp the binary with the real SDK version. AppKit picks its look (and several behaviors) from the
+# SDK the binary claims it was linked against; with Xcode 27's toolchain `swift build` has been seen
+# stamping the deployment target there instead (sdk 14.0), which silently drops the app back to the
+# pre-macOS 26 controls. Passing it explicitly is harmless on toolchains that already get it right.
+SDK_VERSION="$(xcrun --show-sdk-version 2>/dev/null || true)"
+if [ -n "$SDK_VERSION" ]; then
+    swift build -c "$CONFIG" \
+        -Xlinker -platform_version -Xlinker macos -Xlinker "$MIN_MACOS.0" -Xlinker "$SDK_VERSION"
+else
+    swift build -c "$CONFIG"
+fi
+if [ -n "$SDK_VERSION" ] && command -v vtool >/dev/null 2>&1; then
+    STAMPED="$(vtool -show-build "$BUILD_DIR/$APP_NAME" 2>/dev/null | awk '$1=="sdk"{print $2; exit}')"
+    if [ -n "$STAMPED" ] && [ "${STAMPED%%.*}" != "${SDK_VERSION%%.*}" ]; then
+        echo "✗ The binary claims SDK $STAMPED but was built with SDK $SDK_VERSION — AppKit would draw the old look." >&2
+        exit 1
+    fi
+fi
 
 echo "→ Assembling $BUNDLE…"
 rm -rf "$BUNDLE"

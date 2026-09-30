@@ -1,3 +1,4 @@
+import CoreML
 import Foundation
 import WhisperKit
 
@@ -141,6 +142,16 @@ actor LocalTranscriber {
     /// failing download on every subsequent transcription.
     private var fallbackFor: [String: String] = [:]
 
+    /// Escape hatch for a Neural Engine that stops answering (reported on the macOS 27 RC for other
+    /// Core ML speech apps): `defaults write io.github.tamibot.klip whisperComputeUnits gpu` runs the
+    /// encoder and decoder on the GPU instead. nil keeps WhisperKit's own defaults (Neural Engine).
+    /// ponytail: a hidden defaults key, not a setting — promote it to Preferences if it turns out to
+    /// be needed on shipping macOS 27, or delete it if the Neural Engine path keeps working.
+    static var computeOptions: ModelComputeOptions? {
+        guard UserDefaults.standard.string(forKey: "whisperComputeUnits") == "gpu" else { return nil }
+        return ModelComputeOptions(audioEncoderCompute: .cpuAndGPU, textDecoderCompute: .cpuAndGPU)
+    }
+
     private func pipeline(for model: String, strict: Bool = false) async throws -> WhisperKit {
         // A remembered fallback is a convenience for the automatic path only: when the caller asked for
         // THIS model explicitly, honour the request (and fail loudly if it still can't be loaded).
@@ -155,7 +166,7 @@ actor LocalTranscriber {
             // models then load lazily inside transcribe — and with VAD chunking every concurrent chunk
             // calls loadModels() at once, which was observed crashing in objc_release with three
             // threads inside loadModels simultaneously.
-            wk = try await WhisperKit(WhisperKitConfig(model: effective, load: true))   // downloads the model on first use
+            wk = try await WhisperKit(WhisperKitConfig(model: effective, computeOptions: Self.computeOptions, load: true))   // downloads the model on first use
             loadedModel = effective
         } catch {
             // A bad/unavailable model id (or a failed download for that variant) shouldn't break every
@@ -163,7 +174,7 @@ actor LocalTranscriber {
             // Never under `strict`: that caller replaces an existing transcript with the result, so a
             // silent downgrade to a weaker model would be data loss wearing a success message.
             guard !strict, effective != Self.defaultModel else { throw error }
-            wk = try await WhisperKit(WhisperKitConfig(model: Self.defaultModel))
+            wk = try await WhisperKit(WhisperKitConfig(model: Self.defaultModel, computeOptions: Self.computeOptions))
             loadedModel = Self.defaultModel
             fallbackFor[model] = Self.defaultModel
         }

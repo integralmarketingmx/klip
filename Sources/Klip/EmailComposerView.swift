@@ -21,17 +21,17 @@ struct EmailComposerView: View {
 
     enum Audience { case owner, other }
 
-    @State private var audience: Audience = .owner
-    @State private var to: String = ""
-    @State private var cc: String = ""
-    @State private var bcc: String = ""
-    @State private var subject: String
-    @State private var bodyText: String
-    @State private var showCCBCC = false
-    @State private var sending = false
-    @State private var errorText: String?
-    @State private var sent = false
-    @State private var extraAttachments: [MailAttachment] = []
+    @StateVar private var audience: Audience = .owner
+    @StateVar private var to: String = ""
+    @StateVar private var cc: String = ""
+    @StateVar private var bcc: String = ""
+    @StateVar private var subject: String
+    @StateVar private var bodyText: String
+    @StateVar private var showCCBCC = false
+    @StateVar private var sending = false
+    @StateVar private var errorText: String?
+    @StateVar private var sent = false
+    @StateVar private var extraAttachments: [MailAttachment] = []
 
     @ObservedObject private var settings = Settings.shared
 

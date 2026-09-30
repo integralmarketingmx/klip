@@ -107,7 +107,7 @@ Text & image history · **native capture + annotation** · **OCR** · **voice no
 
 ## 🧰 Requirements
 
-- **macOS 14 (Sonoma) or later** — tested on macOS 26, Apple Silicon.
+- **macOS 14 (Sonoma) or later** — tested on macOS 26 and macOS 27, Apple Silicon. Builds against the macOS 27 SDK with Command Line Tools alone (see *Contributing* for the one rule that keeps it that way).
 - **Xcode Command Line Tools** (no full Xcode needed):
   ```bash
   xcode-select --install
@@ -208,6 +208,8 @@ Open **Preferences** (`⌘,` from the Klip menu):
 ## 🤝 Contributing
 
 Contributions are welcome! Open an *issue* or a *pull request*. The project builds with just the Command Line Tools (no Xcode), so it's easy to get started. Code and comments are in English to keep the project approachable for everyone.
+
+> **Use `@StateVar`, not `@State`, in SwiftUI views.** The macOS 27 SDK turns `@State` into a macro whose plugin (`SwiftUIMacros`) only ships with full Xcode, so a Command Line Tools build fails with `plugin for module 'SwiftUIMacros' not found`. `StateVar` (in `StateCompat.swift`) is a typealias for the same `SwiftUI.State` property wrapper, so it behaves identically and builds on every SDK. `@StateObject`, `@Binding` and the other wrappers are unaffected.
 
 ## 👤 Author
 

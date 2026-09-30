@@ -44,21 +44,21 @@ struct HistoryView: View {
     var onExportZip: ([ClipboardItem]) -> Void
     var onAssignCollection: ([ClipboardItem]) -> Void
 
-    @State private var search = ""
+    @StateVar private var search = ""
     @FocusState private var searchFocused: Bool
-    @State private var filter: HistoryFilter = .all
-    @State private var collectionFilter: String?
-    @State private var selecting = false
-    @State private var selectedBatch: Set<UUID> = []
-    @State private var ocrResultID: UUID?
-    @State private var ocrText = ""
-    @State private var ocrRunning = false
+    @StateVar private var filter: HistoryFilter = .all
+    @StateVar private var collectionFilter: String?
+    @StateVar private var selecting = false
+    @StateVar private var selectedBatch: Set<UUID> = []
+    @StateVar private var ocrResultID: UUID?
+    @StateVar private var ocrText = ""
+    @StateVar private var ocrRunning = false
 
     /// Paginación del render (Consejo C5): mantenemos TODO en memoria como hasta ahora, pero solo
     /// construimos las primeras `visibleLimit` filas para no instanciar miles de `ItemRow` de golpe
     /// cuando el historial es grande. "Cargar más" suma otra página.
     private static let pageSize = 100
-    @State private var visibleLimit = HistoryView.pageSize
+    @StateVar private var visibleLimit = HistoryView.pageSize
 
     static let appLogo: NSImage? = {
         if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
@@ -441,9 +441,9 @@ struct ItemRow: View {
     var isChecked: Bool = false
     var onToggleCheck: () -> Void = {}
 
-    @State private var hovering = false
-    @State private var revealed = false
-    @State private var uploading = false   // subiendo a link: muestra ProgressView en vez del icono
+    @StateVar private var hovering = false
+    @StateVar private var revealed = false
+    @StateVar private var uploading = false   // subiendo a link: muestra ProgressView en vez del icono
 
     private var isCredential: Bool { item.isCredential == true }
     private var hasText: Bool { !(item.text?.isEmpty ?? true) }
@@ -787,7 +787,7 @@ struct VoicePlayButton: View {
 /// fondo, evitando bloquear el scroll del historial al decodificar PNG grandes (Consejo C5).
 struct AsyncThumbnail: View {
     let fileName: String
-    @State private var image: NSImage?
+    @StateVar private var image: NSImage?
 
     var body: some View {
         Group {

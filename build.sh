@@ -63,6 +63,17 @@ echo "→ Building ($CONFIG)…"
 # SDK the binary claims it was linked against; with Xcode 27's toolchain `swift build` has been seen
 # stamping the deployment target there instead (sdk 14.0), which silently drops the app back to the
 # pre-macOS 26 controls. Passing it explicitly is harmless on toolchains that already get it right.
+# The macOS 27 SDK turns SwiftUI's @State into a macro whose plugin ships only with Xcode, so the
+# Command Line Tools alone can't compile against it ("plugin for module 'SwiftUIMacros' not found").
+# Without Xcode, fall back to the newest macOS 26 SDK the Command Line Tools still carry.
+if [ -z "${SDKROOT:-}" ] && [ ! -d "$(xcode-select -p 2>/dev/null)/Platforms" ]; then
+    PLUGINS="$(dirname "$(xcrun --find swift)")/../lib/swift/host/plugins"
+    SDKS="$(xcrun --show-sdk-path 2>/dev/null)/.."
+    if [ ! -e "$PLUGINS/libSwiftUIMacros.dylib" ] && [ -d "$SDKS/MacOSX26.sdk" ]; then
+        export SDKROOT="$(cd "$SDKS/MacOSX26.sdk" && pwd -P)"
+        echo "  (no Xcode: building against $(basename "$SDKROOT"), the macOS 27 SDK needs Xcode's SwiftUI macros)"
+    fi
+fi
 SDK_VERSION="$(xcrun --show-sdk-version 2>/dev/null || true)"
 if [ -n "$SDK_VERSION" ]; then
     swift build -c "$CONFIG" \

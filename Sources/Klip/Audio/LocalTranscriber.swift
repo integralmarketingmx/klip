@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreML
 import Foundation
 import WhisperKit
@@ -116,7 +117,10 @@ actor LocalTranscriber {
         // SPEED: split long audio at silence (energy VAD) and decode chunks in parallel
         // (concurrentWorkerCount defaults to 16). Short clips stay one chunk → no overhead; long uploads
         // transcribe much faster. The model is loaded once and reused (see `pipeline`).
-        opts.chunkingStrategy = .vad
+        // Only for long audio: on a short clip the energy VAD can find no speech and leave zero chunks,
+        // which reads as an empty transcript.
+        let clipSeconds = (try? AVAudioFile(forReading: audioURL)).map { Double($0.length) / $0.processingFormat.sampleRate } ?? 0
+        if clipSeconds > 60 { opts.chunkingStrategy = .vad }
         if let language, !language.isEmpty {
             opts.language = language          // explicit audio language
             opts.detectLanguage = false
@@ -129,13 +133,24 @@ actor LocalTranscriber {
         if !vocab.isEmpty, let tok = wk.tokenizer {
             let ids = tok.encode(text: " " + vocab).filter { $0 < tok.specialTokens.specialTokenBegin }
             if !ids.isEmpty {
-                opts.promptTokens = Array(ids.suffix(200))
+                // The 224-token window is shared with the output: a long prompt can starve the transcript.
+                opts.promptTokens = Array(ids.suffix(40))
                 opts.usePrefillPrompt = true
                 // Once per transcription, so the context-words feature is verifiable in Console.app.
                 NSLog("Klip LocalTranscriber: biasing decode with %d context-word prompt tokens", opts.promptTokens?.count ?? 0)
             }
         }
-        return try await wk.transcribe(audioPath: audioURL.path, decodeOptions: opts)
+        var results = try await wk.transcribe(audioPath: audioURL.path, decodeOptions: opts)
+        let isBlank = { (r: [TranscriptionResult]) in r.allSatisfy { $0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } }
+        // Empty with a prompt means the prompt ate the output: retry once without it.
+        if isBlank(results), opts.promptTokens != nil {
+            NSLog("Klip LocalTranscriber: empty result with %d prompt tokens (%.1fs clip), retrying without prompt", opts.promptTokens?.count ?? 0, clipSeconds)
+            opts.promptTokens = nil
+            opts.usePrefillPrompt = false
+            results = try await wk.transcribe(audioPath: audioURL.path, decodeOptions: opts)
+        }
+        if isBlank(results) { NSLog("Klip LocalTranscriber: still empty (%.1fs clip, model %@)", clipSeconds, loadedModel ?? "?") }
+        return results
     }
 
     /// Remembers a model id that failed to load → the id it fell back to, so we don't re-attempt the
@@ -173,8 +188,9 @@ actor LocalTranscriber {
             // transcription — fall back to the default model and remember it (no repeated failed downloads).
             // Never under `strict`: that caller replaces an existing transcript with the result, so a
             // silent downgrade to a weaker model would be data loss wearing a success message.
+            NSLog("Klip LocalTranscriber: loading %@ FAILED (%@), falling back to %@", effective, String(describing: error), Self.defaultModel)
             guard !strict, effective != Self.defaultModel else { throw error }
-            wk = try await WhisperKit(WhisperKitConfig(model: Self.defaultModel, computeOptions: Self.computeOptions))
+            wk = try await WhisperKit(WhisperKitConfig(model: Self.defaultModel, computeOptions: Self.computeOptions, load: true))
             loadedModel = Self.defaultModel
             fallbackFor[model] = Self.defaultModel
         }

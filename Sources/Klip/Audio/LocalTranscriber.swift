@@ -113,7 +113,11 @@ actor LocalTranscriber {
         var opts = DecodingOptions()
         opts.task = .transcribe
         opts.skipSpecialTokens = true
-        opts.withoutTimestamps = !timestamps
+        // Always decode WITH timestamps. Without them, any note spanning two 30 s windows is a coin flip:
+        // the turbo model sometimes stops after one window and the transcript silently loses its head or its
+        // tail (measured on this Mac, macOS 27: 36 s note 13 of 68 words in 3/6 runs, 44 s note 48 of 83 in 2/4;
+        // with timestamps 20/20 runs complete, on 36 s, 44 s, 103 s and 209 s notes). Speed cost is small.
+        opts.withoutTimestamps = false
         // SPEED: split long audio at silence (energy VAD) and decode chunks in parallel
         // (concurrentWorkerCount defaults to 16). Short clips stay one chunk → no overhead; long uploads
         // transcribe much faster. The model is loaded once and reused (see `pipeline`).
@@ -142,6 +146,16 @@ actor LocalTranscriber {
         }
         var results = try await wk.transcribe(audioPath: audioURL.path, decodeOptions: opts)
         let isBlank = { (r: [TranscriptionResult]) in r.allSatisfy { $0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } }
+        let wordCount = { (r: [TranscriptionResult]) in r.reduce(0) { $0 + $1.text.split(whereSeparator: \.isWhitespace).count } }
+        // Coverage guard: a long clip with far too few words lost a window → retry once, split at silence.
+        // ponytail: 0.5 words/s floor (speech runs ~2/s; slow dictation with pauses still clears it).
+        if !timestamps, clipSeconds > 20, !isBlank(results), Double(wordCount(results)) / clipSeconds < 0.5 {
+            NSLog("Klip LocalTranscriber: low coverage (%d words in %.1fs clip), retrying with VAD", wordCount(results), clipSeconds)
+            var retry = opts
+            retry.chunkingStrategy = .vad
+            let second = try await wk.transcribe(audioPath: audioURL.path, decodeOptions: retry)
+            if wordCount(second) > wordCount(results) { results = second }
+        }
         // Empty with a prompt means the prompt ate the output: retry once without it.
         if isBlank(results), opts.promptTokens != nil {
             NSLog("Klip LocalTranscriber: empty result with %d prompt tokens (%.1fs clip), retrying without prompt", opts.promptTokens?.count ?? 0, clipSeconds)
